@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { walletClient, SplitView, Recipient } from "../lib/tributary";
+import {
+  walletClient,
+  SplitView,
+  Recipient,
+  shortAddress,
+} from "../lib/tributary";
 import RecipientEditor, {
   Row,
   rowsError,
@@ -37,9 +42,19 @@ export default function ManageSplit({
   function select(id: string) {
     setSplitId(id);
     setConfirmLock(false);
+    setTransferTo("");
     setMessage(null);
     const split = mine.find((s) => String(s.id) === id);
     setRows(split ? toRows(split) : []);
+  }
+
+  // Once control is gone the wallet can no longer act on this split, so
+  // drop the selection instead of leaving a dead editor on screen.
+  function clearSelection() {
+    setSplitId("");
+    setRows([]);
+    setTransferTo("");
+    setConfirmLock(false);
   }
 
   async function run(action: () => Promise<string>) {
@@ -56,6 +71,7 @@ export default function ManageSplit({
   }
 
   async function update() {
+    setConfirmLock(false);
     const invalid = rowsError(rows);
     if (invalid) {
       setMessage(invalid);
@@ -73,34 +89,42 @@ export default function ManageSplit({
   }
 
   async function transfer() {
-    if (!/^G[A-Z2-7]{55}$/.test(transferTo.trim())) {
+    setConfirmLock(false);
+    const to = transferTo.trim();
+    if (!/^G[A-Z2-7]{55}$/.test(to)) {
       setMessage("Controller must be a G… account key.");
       return;
     }
+    if (to === wallet) {
+      setMessage("That address already controls this split.");
+      return;
+    }
+    const id = splitId;
     await run(async () => {
       const tx = await walletClient(wallet!).transfer_control({
-        id: BigInt(splitId),
-        new_controller: transferTo.trim(),
+        id: BigInt(id),
+        new_controller: to,
       });
       const { result } = await tx.signAndSend();
-      return result.isOk() ? "Control transferred." : "Transfer rejected.";
+      if (!result.isOk()) return "Transfer rejected.";
+      clearSelection();
+      return `Control of split #${id} handed to ${shortAddress(to)}.`;
     });
   }
 
   async function lock() {
-    if (!confirmLock) {
-      setConfirmLock(true);
-      setMessage("Locking is permanent. Press again to confirm.");
-      return;
-    }
+    const id = splitId;
     await run(async () => {
       const tx = await walletClient(wallet!).transfer_control({
-        id: BigInt(splitId),
+        id: BigInt(id),
         new_controller: undefined,
       });
       const { result } = await tx.signAndSend();
-      return result.isOk() ? "Split locked forever." : "Lock rejected.";
+      if (!result.isOk()) return "Lock rejected.";
+      clearSelection();
+      return `Split #${id} is locked. Its recipients can never change again.`;
     });
+    setConfirmLock(false);
   }
 
   return (
@@ -129,14 +153,47 @@ export default function ManageSplit({
               placeholder="G… new controller"
               value={transferTo}
               onChange={(e) => setTransferTo(e.target.value)}
+              disabled={confirmLock}
             />
-            <button className="ghost" disabled={busy} onClick={transfer}>
+            <button
+              className="ghost"
+              disabled={busy || confirmLock}
+              onClick={transfer}
+            >
               Transfer
             </button>
-            <button className="ghost" disabled={busy} onClick={lock}>
-              {confirmLock ? "Confirm lock" : "Lock forever"}
+            <button
+              className="ghost"
+              disabled={busy || confirmLock}
+              onClick={() => {
+                setConfirmLock(true);
+                setMessage(null);
+              }}
+            >
+              Lock forever
             </button>
           </div>
+          {confirmLock && (
+            <div className="lock-confirm" role="alertdialog" aria-live="assertive">
+              <p>
+                <strong>Lock split #{splitId} permanently?</strong> Nobody —
+                including you — will ever be able to edit its recipients,
+                transfer control, or close it. This cannot be undone.
+              </p>
+              <div className="row">
+                <button className="danger" disabled={busy} onClick={lock}>
+                  Yes, lock it forever
+                </button>
+                <button
+                  className="ghost"
+                  disabled={busy}
+                  onClick={() => setConfirmLock(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
       {message && <p className="note">{message}</p>}

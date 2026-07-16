@@ -121,6 +121,11 @@ button.ghost:hover:not(:disabled) {
   filter: none;
 }
 
+button.danger {
+  background: #d64560;
+  color: #fff;
+}
+
 .wallet {
   font-family: ui-monospace, Consolas, monospace;
   font-size: 13px;
@@ -309,6 +314,19 @@ button.small {
   font-size: 13px;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+.lock-confirm {
+  margin-top: 12px;
+  background: #2a1420;
+  border: 1px solid #5c2740;
+  border-radius: 9px;
+  padding: 12px 14px;
+  font-size: 14px;
+}
+
+.lock-confirm .row {
+  margin-top: 10px;
 }
 
 .error {
