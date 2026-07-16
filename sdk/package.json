@@ -19,6 +19,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "node --import tsx --test ./src/retry.test.ts",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "buffer": "6.0.3"
   },
   "devDependencies": {
+    "tsx": "^4.19.0",
     "typescript": "^6.0.3"
   }
 }
