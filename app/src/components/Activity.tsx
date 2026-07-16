@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { fromStroops, tokenCode, ActivityItem, EXPLORER } from "../lib/tributary";
+import { fromStroops, tokenCode, relativeTime, ledgerTimestamp, ActivityItem, EXPLORER } from "../lib/tributary";
 
 const LABELS: Record<string, string> = {
   split_created: "created",
@@ -10,7 +10,7 @@ const LABELS: Record<string, string> = {
   control_transferred: "control moved",
 };
 
-export default function Activity({ items }: { items: ActivityItem[] }) {
+export default function Activity({ items, latestLedger }: { items: ActivityItem[]; latestLedger: number }) {
   if (items.length === 0) return null;
 
   const exportCSV = () => {
@@ -64,6 +64,14 @@ export default function Activity({ items }: { items: ActivityItem[] }) {
               >
                 tx
               </a>
+              {latestLedger > 0 && (
+                <span
+                  className="timestamp"
+                  title={ledgerTimestamp(item.ledger, latestLedger)}
+                >
+                  {relativeTime(item.ledger, latestLedger)}
+                </span>
+              )}
             </motion.li>
           ))}
         </AnimatePresence>
