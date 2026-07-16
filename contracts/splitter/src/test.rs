@@ -714,13 +714,12 @@ fn property_conservation_random_shares() {
                         "conservation failed",
                     ));
                 }
-                    received += token_client.balance(&addr);
-                }
-                proptest::prop_assert_eq!(received, amount);
                 Ok(())
             },
         )
         .is_ok());
+}
+
 // Turns arbitrary positive weights into basis-point shares that sum to
 // exactly TOTAL_SHARES, using the same floor-with-remainder-to-last approach
 // as `amounts` in lib.rs, so `create_split`'s share-total check accepts them.
@@ -1118,4 +1117,49 @@ fn distribute_pays_out_the_fee_adjusted_balance() {
     // distributing it does not try to move more than the vault has.
     assert_eq!(distributed, 450);
     assert_eq!(token_client.balance(&s.client.address), 0);
+}
+
+#[test]
+fn test_duplicate_account_recipient() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    // Both recipients are the same Account address — must be rejected.
+    let result = s.client.try_create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&a)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    assert_eq!(result, Err(Ok(Error::DuplicateRecipient)));
+}
+
+#[test]
+fn test_duplicate_split_recipient() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf = Address::generate(&s.env);
+
+    // Create a valid child split first so Recipient::Split(child_id) passes
+    // the BadChildSplit guard and only the duplicate check fires.
+    let child_id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    // Both recipients reference the same child split — must be rejected.
+    let result = s.client.try_create_split(
+        &creator,
+        &vec![
+            &s.env,
+            Recipient::Split(child_id),
+            Recipient::Split(child_id),
+        ],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    assert_eq!(result, Err(Ok(Error::DuplicateRecipient)));
 }

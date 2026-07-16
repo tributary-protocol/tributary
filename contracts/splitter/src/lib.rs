@@ -43,6 +43,7 @@ pub enum Error {
     /// `validate` forbids, but we surface it as a typed error rather than panic.
     ArithmeticOverflow = 11,
     SplitHasBalance = 12,
+    DuplicateRecipient = 13,
 }
 
 #[contracttype]
@@ -402,6 +403,18 @@ fn validate(
     }
     if recipients.len() != shares.len() {
         return Err(Error::LengthMismatch);
+    }
+    let len = recipients.len();
+    let mut i = 0;
+    while i < len {
+        let mut j = i + 1;
+        while j < len {
+            if recipients.get_unchecked(i) == recipients.get_unchecked(j) {
+                return Err(Error::DuplicateRecipient);
+            }
+            j += 1;
+        }
+        i += 1;
     }
     for recipient in recipients.iter() {
         if let Recipient::Split(child) = recipient {
