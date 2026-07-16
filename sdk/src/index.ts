@@ -48,8 +48,14 @@ export const Errors = {
   7: {message:"InvalidAmount"},
   8: {message:"NothingToDistribute"},
   9: {message:"TooManyRecipients"},
-  10: {message:"BadChildSplit"}
+  10: {message:"BadChildSplit"},
+  11: {message:"ArithmeticOverflow"}
 }
+
+export function decode(code: number): string | undefined {
+  return (Errors as Record<number, { message: string }>)[code]?.message;
+}
+
 
 
 export interface Split {
