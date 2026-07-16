@@ -199,4 +199,33 @@ export function fromStroops(stroops: bigint): string {
   return (Number(stroops) / 10_000_000).toLocaleString(undefined, {
     maximumFractionDigits: 7,
   });
+}\n
+
+/** Average Stellar ledger close time in seconds. */
+const LEDGER_CLOSE_SECS = 5;
+
+/**
+ * Convert a ledger sequence number to a relative-time string
+ * (e.g. "2 min ago") using the latest known ledger as the reference.
+ */
+export function relativeTime(ledger: number, latestLedger: number): string {
+  const deltaSecs = (latestLedger - ledger) * LEDGER_CLOSE_SECS;
+  if (deltaSecs < 0) return "just now";
+  if (deltaSecs < 60) return `${deltaSecs}s ago`;
+  const mins = Math.floor(deltaSecs / 60);
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+/**
+ * Absolute timestamp estimate for a ledger, used as a tooltip.
+ * Approximate: assumes 5-second close times from now.
+ */
+export function ledgerTimestamp(ledger: number, latestLedger: number): string {
+  const deltaSecs = (latestLedger - ledger) * LEDGER_CLOSE_SECS;
+  const date = new Date(Date.now() - deltaSecs * 1000);
+  return date.toISOString().replace("T", " ").slice(0, 19) + " UTC";
 }
