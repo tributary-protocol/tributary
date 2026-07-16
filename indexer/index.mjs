@@ -1,4 +1,5 @@
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync, renameSync, openSync, fdatasyncSync, closeSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { rpc, scValToNative } from "@stellar/stellar-sdk";
 
 const RPC_URL = process.env.RPC_URL ?? "https://soroban-testnet.stellar.org";
@@ -8,23 +9,61 @@ const OUT = process.env.OUT ?? "events.ndjson";
 const STATE = process.env.STATE ?? "state.json";
 const POLL_MS = Number(process.env.POLL_MS ?? 10_000);
 
-const server = new rpc.Server(RPC_URL);
-
-function loadCursor() {
-  if (!existsSync(STATE)) return null;
-  return JSON.parse(readFileSync(STATE, "utf8")).cursor ?? null;
+export function loadCursor(statePath) {
+  if (!existsSync(statePath)) return null;
+  return JSON.parse(readFileSync(statePath, "utf8")).cursor ?? null;
 }
 
-function saveCursor(cursor) {
-  writeFileSync(STATE, JSON.stringify({ cursor }));
+function atomicWrite(path, data) {
+  const tmp = path + ".tmp";
+  writeFileSync(tmp, data);
+  try {
+    const fd = openSync(tmp, "r+");
+    fdatasyncSync(fd);
+    closeSync(fd);
+  } catch {
+    // fsync is best-effort – tmp+rename is atomic on most platforms
+  }
+  renameSync(tmp, path);
 }
 
-function decode(ev) {
+export function saveCursor(statePath, cursor) {
+  atomicWrite(statePath, JSON.stringify({ cursor }));
+}
+
+export function cursorLedger(cursor) {
+  if (!cursor) return 0;
+  return Number(BigInt(cursor.split("-")[0]) >> 32n);
+}
+
+function lastEventCursor(outPath) {
+  if (!existsSync(outPath)) return null;
+  const content = readFileSync(outPath, "utf8").trimEnd();
+  if (!content) return null;
+  const lines = content.split("\n");
+  const last = JSON.parse(lines[lines.length - 1]);
+  return last._cursor ?? null;
+}
+
+export function resolveCursor(statePath, outPath) {
+  const state = loadCursor(statePath);
+  const output = lastEventCursor(outPath);
+  if (!state) return output;
+  if (!output) return state;
+  const sl = cursorLedger(state);
+  const ol = cursorLedger(output);
+  if (ol > sl) return output;
+  if (ol < sl) return state;
+  return state >= output ? state : output;
+}
+
+export function decode(ev, responseCursor) {
   const record = {
     ledger: ev.ledger,
     txHash: ev.txHash,
     id: ev.id,
     at: ev.ledgerClosedAt,
+    _cursor: responseCursor,
   };
   try {
     record.type = scValToNative(ev.topic[0]);
@@ -41,15 +80,9 @@ function decode(ev) {
   return record;
 }
 
-function cursorLedger(cursor) {
-  return Number(BigInt(cursor.split("-")[0]) >> 32n);
-}
-
-// getEvents scans at most ~10k ledgers per call, so one poll pages the
-// cursor forward until it catches up with the chain head.
-async function poll() {
-  let cursor = loadCursor();
-  const filters = [{ type: "contract", contractIds: [CONTRACT_ID] }];
+export async function poll({ server, contractId, outPath, statePath }) {
+  let cursor = resolveCursor(statePath, outPath);
+  const filters = [{ type: "contract", contractIds: [contractId] }];
   let total = 0;
 
   for (;;) {
@@ -65,22 +98,44 @@ async function poll() {
         };
 
     const res = await server.getEvents(request);
-    for (const ev of res.events) {
-      appendFileSync(OUT, JSON.stringify(decode(ev)) + "\n");
+    if (res.events.length > 0) {
+      const batch = res.events
+        .map((ev) => JSON.stringify(decode(ev, res.cursor)) + "\n")
+        .join("");
+      appendFileSync(outPath, batch);
     }
     total += res.events.length;
 
     if (!res.cursor || res.cursor === cursor) break;
     cursor = res.cursor;
-    saveCursor(cursor);
+    saveCursor(statePath, cursor);
     if (res.events.length < 100 && cursorLedger(cursor) >= res.latestLedger) {
       break;
     }
   }
 
-  if (total > 0) console.log(`indexed ${total} events`);
+  return total;
 }
 
-console.log(`indexing ${CONTRACT_ID} from ${RPC_URL} every ${POLL_MS}ms`);
-await poll();
-setInterval(() => poll().catch((e) => console.error(e.message ?? e)), POLL_MS);
+async function main() {
+  const server = new rpc.Server(RPC_URL);
+  console.log(`indexing ${CONTRACT_ID} from ${RPC_URL} every ${POLL_MS}ms`);
+  const total = await poll({
+    server,
+    contractId: CONTRACT_ID,
+    outPath: OUT,
+    statePath: STATE,
+  });
+  if (total > 0) console.log(`indexed ${total} events`);
+  setInterval(
+    () =>
+      poll({ server, contractId: CONTRACT_ID, outPath: OUT, statePath: STATE }).catch((e) =>
+        console.error(e.message ?? e),
+      ),
+    POLL_MS,
+  );
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
+}
