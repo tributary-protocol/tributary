@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tributary-protocol/tributary/indexer/events.schema.json",
+  "title": "TributaryEvent",
+  "description": "One line of events.ndjson produced by the tributary-indexer. Each line is a JSON object matching one of the event types emitted by the splitter contract.",
+  "type": "object",
+  "required": ["ledger", "txHash", "id", "at", "type"],
+  "properties": {
+    "ledger": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Ledger sequence number at which the event was recorded."
+    },
+    "txHash": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$",
+      "description": "Hex-encoded SHA-256 transaction hash."
+    },
+    "id": {
+      "type": "string",
+      "description": "Opaque cursor identifier assigned by the Soroban RPC to this event."
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the ledger close."
+    },
+    "type": {
+      "type": "string",
+      "description": "Event type name derived from the contract topic."
+    }
+  },
+  "oneOf": [
+    {
+      "title": "SplitCreated",
+      "description": "Emitted by create_split when a new split is registered.",
+      "properties": {
+        "type": { "const": "split_created" },
+        "split": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "String-encoded u64 split id assigned to the new split."
+        },
+        "creator": {
+          "type": "string",
+          "description": "Stellar address of the account that created the split."
+        }
+      },
+      "required": ["split", "creator"]
+    },
+    {
+      "title": "SplitPaid",
+      "description": "Emitted by pay and pay_many for every split that receives a direct payment.",
+      "properties": {
+        "type": { "const": "split_paid" },
+        "split": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "String-encoded u64 id of the split that was paid."
+        },
+        "token": {
+          "type": "string",
+          "description": "Stellar address of the asset contract used for this payment."
+        },
+        "amount": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "String-encoded i128 total amount routed through the split (stroops or token base units)."
+        }
+      },
+      "required": ["split", "token", "amount"]
+    },
+    {
+      "title": "SplitUpdated",
+      "description": "Emitted by update_split when a controller replaces a split's routing table.",
+      "properties": {
+        "type": { "const": "split_updated" },
+        "split": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "String-encoded u64 id of the split whose recipients/shares changed."
+        }
+      },
+      "required": ["split"]
+    },
+    {
+      "title": "SplitClosed",
+      "description": "Emitted by close_split when a controller removes a split from storage.",
+      "properties": {
+        "type": { "const": "split_closed" },
+        "split": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "String-encoded u64 id of the split that was removed."
+        }
+      },
+      "required": ["split"]
+    },
+    {
+      "title": "ControlTransferred",
+      "description": "Emitted by transfer_control when a split's controller is changed or the split is locked.",
+      "properties": {
+        "type": { "const": "control_transferred" },
+        "split": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "String-encoded u64 id of the split whose controller changed."
+        },
+        "new_controller": {
+          "type": ["string", "null"],
+          "description": "Stellar address of the new controller, or null when the split is locked forever."
+        }
+      },
+      "required": ["split", "new_controller"]
+    },
+    {
+      "title": "Deposited",
+      "description": "Emitted by deposit (and internally by pay when a recipient is itself a split) whenever funds are credited to a split's escrow balance.",
+      "properties": {
+        "type": { "const": "deposited" },
+        "split": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "String-encoded u64 id of the split whose balance was credited."
+        },
+        "token": {
+          "type": "string",
+          "description": "Stellar address of the asset contract credited to the split."
+        },
+        "amount": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "String-encoded i128 amount added to the escrow balance."
+        }
+      },
+      "required": ["split", "token", "amount"]
+    },
+    {
+      "title": "Distributed",
+      "description": "Emitted by distribute when the full escrowed balance for a token is paid out to the split's recipients.",
+      "properties": {
+        "type": { "const": "distributed" },
+        "split": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "String-encoded u64 id of the split that was distributed."
+        },
+        "token": {
+          "type": "string",
+          "description": "Stellar address of the asset contract that was distributed."
+        },
+        "amount": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "String-encoded i128 total amount distributed to all recipients."
+        }
+      },
+      "required": ["split", "token", "amount"]
+    },
+    {
+      "title": "Undecoded",
+      "description": "Fallback record written when the indexer cannot decode the raw contract event (e.g. unknown topic encoding).",
+      "properties": {
+        "type": { "const": "undecoded" }
+      },
+      "required": []
+    }
+  ]
+}

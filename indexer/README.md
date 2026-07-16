@@ -70,6 +70,54 @@ By default, the Docker image is configured to write to `/app/data/events.ndjson`
 | `STATE` | `/app/data/state.json` | Cursor state file path |
 | `POLL_MS` | `10000` | Polling interval in milliseconds |
 
+## Event schema
+
+The shape of every record written to `events.ndjson` is documented in
+`events.schema.json` (JSON Schema draft 2020-12). All records share five
+common fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `ledger` | integer | Ledger sequence number |
+| `txHash` | string | 64-char hex transaction hash |
+| `id` | string | Opaque RPC cursor id |
+| `at` | string | ISO 8601 ledger-close timestamp |
+| `type` | string | Event type (see table below) |
+
+The `type` field determines which additional fields are present:
+
+| `type` | Extra fields | Emitted by |
+| --- | --- | --- |
+| `split_created` | `split`, `creator` | `create_split` |
+| `split_paid` | `split`, `token`, `amount` | `pay`, `pay_many` |
+| `split_updated` | `split` | `update_split` |
+| `split_closed` | `split` | `close_split` |
+| `control_transferred` | `split`, `new_controller` | `transfer_control` |
+| `deposited` | `split`, `token`, `amount` | `deposit` (and internally when a payment credits a child split) |
+| `distributed` | `split`, `token`, `amount` | `distribute` |
+| `undecoded` | _(none)_ | fallback when the indexer cannot decode the raw topic |
+
+`split` is always a string-encoded `u64` split id. `amount` is a
+string-encoded `i128` in the token's base units (stroops for XLM-based
+assets). `new_controller` is a Stellar address string or `null` when the
+split was locked.
+
+### Validating a log file
+
+Install dev dependencies once, then run the validator against any
+`events.ndjson` file:
+
+```bash
+cd indexer
+npm install
+npm run validate-schema
+# or against a specific file:
+node validate-schema.mjs path/to/events.ndjson
+```
+
+The script exits `0` if every line conforms to the schema and `1` if any
+line fails, printing the offending line number and AJV error details.
+
 ## CSV export
 
 For spreadsheets or accounting, convert the log to CSV:
