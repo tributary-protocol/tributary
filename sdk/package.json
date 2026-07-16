@@ -20,6 +20,7 @@
   "scripts": {
     "build": "tsc",
     "test": "node --import tsx --test ./src/retry.test.ts",
+    "check-size": "node check-bundle-size.js",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
