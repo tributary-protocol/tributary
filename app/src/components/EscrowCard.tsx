@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   readClient,
   walletClient,
@@ -8,6 +8,7 @@ import {
   SplitView,
 } from "../lib/tributary";
 import TokenPicker from "./TokenPicker";
+import FeeHint from "./FeeHint";
 
 export default function EscrowCard({
   wallet,
@@ -42,6 +43,28 @@ export default function EscrowCard({
   useEffect(() => {
     loadPending(splitId);
   }, [splitId, token]);
+
+  const depositFee = useMemo(() => {
+    if (!wallet || splitId === "" || !amount || parseFloat(amount) <= 0) {
+      return null;
+    }
+    return () =>
+      walletClient(wallet).deposit({
+        from: wallet,
+        id: BigInt(splitId),
+        token: token.contract,
+        amount: toStroops(amount),
+      });
+  }, [wallet, splitId, amount, token]);
+
+  const distributeFee = useMemo(() => {
+    if (!wallet || splitId === "" || !pending) return null;
+    return () =>
+      walletClient(wallet).distribute({
+        id: BigInt(splitId),
+        token: token.contract,
+      });
+  }, [wallet, splitId, token, pending]);
 
   async function distribute() {
     if (!wallet) {
@@ -137,6 +160,8 @@ export default function EscrowCard({
         />
         <TokenPicker token={token} onChange={setToken} />
       </div>
+      <FeeHint assemble={depositFee} label="Estimated deposit fee" />
+      <FeeHint assemble={distributeFee} label="Estimated distribute fee" />
       <div className="row">
         <button disabled={busy} onClick={deposit}>
           {busy ? "Working…" : "Deposit"}

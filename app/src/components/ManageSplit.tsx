@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { walletClient, SplitView, Recipient } from "../lib/tributary";
 import RecipientEditor, {
   Row,
@@ -6,6 +6,7 @@ import RecipientEditor, {
   toRecipient,
   toShares,
 } from "./RecipientEditor";
+import FeeHint from "./FeeHint";
 
 function toRows(split: SplitView): Row[] {
   return split.recipients.map((r: Recipient, i: number) => ({
@@ -32,6 +33,37 @@ export default function ManageSplit({
   const [message, setMessage] = useState<string | null>(null);
 
   const mine = splits.filter((s) => s.controller === wallet);
+
+  const updateFee = useMemo(() => {
+    if (!wallet || splitId === "" || rowsError(rows)) return null;
+    return () =>
+      walletClient(wallet).update_split({
+        id: BigInt(splitId),
+        recipients: rows.map(toRecipient),
+        shares: toShares(rows),
+      });
+  }, [wallet, splitId, rows]);
+
+  const transferFee = useMemo(() => {
+    if (!wallet || splitId === "" || !/^G[A-Z2-7]{55}$/.test(transferTo.trim())) {
+      return null;
+    }
+    return () =>
+      walletClient(wallet).transfer_control({
+        id: BigInt(splitId),
+        new_controller: transferTo.trim(),
+      });
+  }, [wallet, splitId, transferTo]);
+
+  const lockFee = useMemo(() => {
+    if (!wallet || splitId === "" || !confirmLock) return null;
+    return () =>
+      walletClient(wallet).transfer_control({
+        id: BigInt(splitId),
+        new_controller: undefined,
+      });
+  }, [wallet, splitId, confirmLock]);
+
   if (!wallet || mine.length === 0) return null;
 
   function select(id: string) {
@@ -119,6 +151,7 @@ export default function ManageSplit({
       {splitId !== "" && (
         <>
           <RecipientEditor rows={rows} onChange={setRows} />
+          <FeeHint assemble={updateFee} label="Estimated update fee" />
           <div className="row">
             <button disabled={busy} onClick={update}>
               Update split
@@ -137,6 +170,8 @@ export default function ManageSplit({
               {confirmLock ? "Confirm lock" : "Lock forever"}
             </button>
           </div>
+          <FeeHint assemble={transferFee} label="Estimated transfer fee" />
+          <FeeHint assemble={lockFee} label="Estimated lock fee" />
         </>
       )}
       {message && <p className="note">{message}</p>}

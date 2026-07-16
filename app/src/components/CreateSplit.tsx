@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { walletClient } from "../lib/tributary";
 import RecipientEditor, {
   Row,
@@ -6,6 +6,7 @@ import RecipientEditor, {
   toRecipient,
   toShares,
 } from "./RecipientEditor";
+import FeeHint from "./FeeHint";
 
 export default function CreateSplit({
   wallet,
@@ -31,6 +32,17 @@ export default function CreateSplit({
       })),
     );
   }
+
+  const assembleFee = useMemo(() => {
+    if (!wallet || rowsError(rows)) return null;
+    return () =>
+      walletClient(wallet).create_split({
+        creator: wallet,
+        recipients: rows.map(toRecipient),
+        shares: toShares(rows),
+        controller: editable ? wallet : undefined,
+      });
+  }, [wallet, rows, editable]);
 
   const templates: [string, number[]][] = [
     ["50/50", [50, 50]],
@@ -96,6 +108,7 @@ export default function CreateSplit({
         />
         I can edit this split later (uncheck to lock it forever)
       </label>
+      <FeeHint assemble={assembleFee} />
       <button disabled={busy} onClick={submit}>
         {busy ? "Waiting for signature…" : "Create split"}
       </button>

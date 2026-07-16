@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   walletClient,
   toStroops,
@@ -9,6 +9,7 @@ import {
   SplitView,
 } from "../lib/tributary";
 import TokenPicker from "./TokenPicker";
+import FeeHint from "./FeeHint";
 
 export default function PaySplit({
   wallet,
@@ -27,6 +28,19 @@ export default function PaySplit({
   const [message, setMessage] = useState<string | null>(null);
 
   const selected = splits.find((s) => String(s.id) === splitId);
+
+  const assembleFee = useMemo(() => {
+    if (!wallet || splitId === "" || !amount || parseFloat(amount) <= 0) {
+      return null;
+    }
+    return () =>
+      walletClient(wallet).pay({
+        from: wallet,
+        id: BigInt(splitId),
+        token: token.contract,
+        amount: toStroops(amount),
+      });
+  }, [wallet, splitId, amount, token]);
 
   useEffect(() => {
     let active = true;
@@ -111,6 +125,7 @@ export default function PaySplit({
           ))}
         </ul>
       )}
+      <FeeHint assemble={assembleFee} />
       <button disabled={busy} onClick={submit}>
         {busy ? "Waiting for signature…" : "Pay"}
       </button>
