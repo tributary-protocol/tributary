@@ -7,7 +7,11 @@ What has to be true before Tributary handles real money. This is the working che
 - [ ] External security review of `contracts/splitter`, focused on the escrow balance accounting and nested routing
 - [ ] Fuzz or property tests on the share math beyond the current conservation cases
 - [ ] Upgrade story decided and documented: the contract is not upgradeable, so a v2 means a new address and a migration note
-- [ ] Gas and fee measurement for worst-case splits (32 recipients, nested one level)
+- [x] Gas and fee measurement for worst-case splits (32 recipients, nested one level)
+  - **32-recipient pay:** 7,612,373 CPU instructions
+  - **32-recipient distribute:** 7,860,215 CPU instructions
+  - Measured via `contracts/splitter/src/test.rs` → `worst_case_32_recipients_cost`.
+  - Both fit within the Soroban mainnet invocation limit of 600,000,000 instructions with ample headroom.
 
 ## Operations
 

@@ -1,9 +1,11 @@
 #![cfg(test)]
 
+extern crate std;
+
 use super::*;
+use proptest::prelude::*;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{vec, Env, IntoVal};
-use proptest::prelude::*;
 
 struct Setup {
     env: Env,
@@ -625,47 +627,63 @@ fn immutable_split_cannot_be_updated() {
 
 #[test]
 fn property_conservation_random_shares() {
-    proptest::prop_assert!(
-        proptest::test_runner::TestRunner::default()
-            .run(
-                &(
-                    proptest::collection::vec(1u32..=10_000u32, 2..10usize),
-                    1i128..1_000_000i128,
-                ),
-                |(shares, amount)| {
-                    // Setup environment
-                    let env = soroban_sdk::Env::default();
-                    env.mock_all_auths();
-                    let contract_id = env.register(Splitter, ());
-                    let client = SplitterClient::new(&env, &contract_id);
-                    let creator = soroban_sdk::Address::generate(&env);
+    let result = proptest::test_runner::TestRunner::default().run(
+        &(
+            proptest::collection::vec(1u32..=10_000u32, 2..10usize),
+            1i128..1_000_000i128,
+        ),
+        |(shares, amount)| {
+            // Setup environment
+            let env = soroban_sdk::Env::default();
+            env.mock_all_auths();
+            let contract_id = env.register(Splitter, ());
+            let client = SplitterClient::new(&env, &contract_id);
+            let creator = soroban_sdk::Address::generate(&env);
 
-                    // Generate recipients matching shares length
-                    let mut recipients = soroban_sdk::vec![&env];
-                    let mut addrs = Vec::new();
-                    for _ in shares.iter() {
-                        let addr = soroban_sdk::Address::generate(&env);
-                        recipients.push_back(acct(&addr));
-                        addrs.push(addr);
-                    }
+            // Normalize random shares proportionally so they sum to TOTAL_SHARES.
+            // The last share absorbs rounding to make the total exact.
+            let total: u64 = shares.iter().map(|&s| s as u64).sum();
+            if total == 0 {
+                return Ok(());
+            }
+            let n = shares.len();
+            let mut recipients = soroban_sdk::vec![&env];
+            let mut addrs = soroban_sdk::Vec::new(&env);
+            let mut shares_sdk = soroban_sdk::Vec::new(&env);
+            let mut assigned: u32 = 0;
+            for (i, &share) in shares.iter().enumerate() {
+                let addr = soroban_sdk::Address::generate(&env);
+                recipients.push_back(acct(&addr));
+                addrs.push_back(addr);
+                let s = if i == n - 1 {
+                    TOTAL_SHARES - assigned
+                } else {
+                    let s = ((share as u64 * TOTAL_SHARES as u64) / total) as u32;
+                    assigned += s;
+                    s
+                };
+                if s == 0 {
+                    return Ok(());
+                }
+                shares_sdk.push_back(s);
+            }
 
-                    // Create split and pay
-                    let id = client.create_split(&creator, &recipients, &shares, &None);
-                    let payer = soroban_sdk::Address::generate(&env);
-                    let (token_id, token_client) = fund_token(&env, &payer, amount);
-                    client.pay(&payer, &id, &token_id, &amount);
+            // Create split and pay
+            let id = client.create_split(&creator, &recipients, &shares_sdk, &None);
+            let payer = soroban_sdk::Address::generate(&env);
+            let (token_id, token_client) = fund_token(&env, &payer, amount);
+            client.pay(&payer, &id, &token_id, &amount);
 
-                    // Sum balances and assert conservation
-                    let mut received: i128 = 0;
-                    for addr in addrs.iter() {
-                        received += token_client.balance(&addr);
-                    }
-                    prop_assert_eq!(received, amount);
-                    Ok(())
-                },
-            )
-            .is_ok()
+            // Sum balances and assert conservation
+            let mut received: i128 = 0;
+            for i in 0..addrs.len() {
+                received += token_client.balance(&addrs.get_unchecked(i));
+            }
+            prop_assert_eq!(received, amount);
+            Ok(())
+        },
     );
+    assert!(result.is_ok());
 }
 
 // Regression for #42: a high-supply token can be paid an amount large enough
@@ -758,4 +776,74 @@ fn held_tokens_tracking() {
     s.client.distribute(&id, &token_y);
     assert_eq!(s.client.held_tokens(&id), vec![&s.env]);
 }
+
+/// Measures CPU-instruction cost of pay and distribute at the worst-case
+/// split size (MAX_RECIPIENTS = 32). The values are printed to stdout;
+/// run with `cargo test -- --nocapture` to inspect them. The test also
+/// verifies that full-amount conservation holds at this boundary.
+#[test]
+fn worst_case_32_recipients_cost() {
+    let s = setup();
+    // This worst-case test intentionally exceeds the default Mainnet resource
+    // limits (600M CPU insns). We remove the budget ceiling so the test can
+    // measure the actual cost rather than being cut off by the limit.
+    s.env.cost_estimate().budget().reset_unlimited();
+    let creator = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 1_000_000);
+
+    // 32 recipients with shares summing to 10_000.
+    // 16 at 313 + 16 at 312 = 5008 + 4992 = 10000.
+    let mut recipients = vec![&s.env];
+    let mut shares = vec![&s.env];
+    let mut addrs = soroban_sdk::Vec::new(&s.env);
+    for _ in 0..16 {
+        let addr = Address::generate(&s.env);
+        recipients.push_back(acct(&addr));
+        shares.push_back(313u32);
+        addrs.push_back(addr);
+    }
+    for _ in 0..16 {
+        let addr = Address::generate(&s.env);
+        recipients.push_back(acct(&addr));
+        shares.push_back(312u32);
+        addrs.push_back(addr);
+    }
+    assert_eq!(recipients.len(), MAX_RECIPIENTS);
+
+    let id = s.client.create_split(&creator, &recipients, &shares, &None);
+
+    // --- Measure pay cost ---
+    let pay_amount: i128 = 100_000;
+    let cpu_before = s.env.cost_estimate().budget().cpu_instruction_cost();
+    s.client.pay(&payer, &id, &token_id, &pay_amount);
+    let cpu_after = s.env.cost_estimate().budget().cpu_instruction_cost();
+    let pay_cpu = cpu_after - cpu_before;
+
+    // Conservation: payer balance correct
+    assert_eq!(token_client.balance(&payer), 900_000);
+    // Conservation: sum of recipient balances equals amount paid
+    let mut received: i128 = 0;
+    for i in 0..addrs.len() {
+        received += token_client.balance(&addrs.get_unchecked(i));
+    }
+    assert_eq!(received, pay_amount);
+
+    // --- Measure distribute cost ---
+    let escrow_amount: i128 = 200_000;
+    s.client.deposit(&payer, &id, &token_id, &escrow_amount);
+
+    let cpu_before = s.env.cost_estimate().budget().cpu_instruction_cost();
+    let distributed = s.client.distribute(&id, &token_id);
+    let cpu_after = s.env.cost_estimate().budget().cpu_instruction_cost();
+    let distribute_cpu = cpu_after - cpu_before;
+
+    assert_eq!(distributed, escrow_amount);
+    assert_eq!(s.client.balance(&id, &token_id), 0);
+
+    // Printed for inspection with `cargo test -- --nocapture`.
+    // These values feed the mainnet fee guidance in docs/mainnet.md.
+    std::println!("=== 32-recipient worst-case cost (CPU instructions) ===");
+    std::println!("pay:        {}", pay_cpu);
+    std::println!("distribute: {}", distribute_cpu);
 }
