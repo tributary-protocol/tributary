@@ -4,10 +4,18 @@ import {
   walletClient,
   toStroops,
   fromStroops,
+  tokenCode,
+  fetchHeldTokens,
   TOKENS,
   SplitView,
 } from "../lib/tributary";
 import TokenPicker from "./TokenPicker";
+
+interface TokenBalance {
+  contract: string;
+  code: string;
+  balance: bigint;
+}
 
 export default function EscrowCard({
   wallet,
@@ -19,58 +27,74 @@ export default function EscrowCard({
   const [splitId, setSplitId] = useState("");
   const [amount, setAmount] = useState("");
   const [token, setToken] = useState(TOKENS[0]);
-  const [pending, setPending] = useState<bigint | null>(null);
+  const [balances, setBalances] = useState<TokenBalance[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [distributing, setDistributing] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function loadPending(id: string) {
+  async function loadBalances(id: string) {
     if (id === "") {
-      setPending(null);
+      setBalances([]);
+      setLoadError(null);
       return;
     }
+    setLoadError(null);
     try {
-      const { result } = await readClient().balance({
-        id: BigInt(id),
-        token: token.contract,
-      });
-      setPending(result);
+      const tokens = await fetchHeldTokens(BigInt(id));
+      if (tokens.length === 0) {
+        setBalances([]);
+        return;
+      }
+      const items = await Promise.all(
+        tokens.map(async (contract) => {
+          const { result } = await readClient().balance({
+            id: BigInt(id),
+            token: contract,
+          });
+          return {
+            contract,
+            code: tokenCode(contract),
+            balance: result,
+          };
+        }),
+      );
+      // Filter out any zero balances that may have been cleared since fetchHeldTokens ran
+      setBalances(items.filter((t) => t.balance > 0n));
     } catch {
-      setPending(null);
+      setLoadError("Failed to load pending balances.");
+      setBalances([]);
     }
   }
 
   useEffect(() => {
-    loadPending(splitId);
-  }, [splitId, token]);
+    loadBalances(splitId);
+  }, [splitId]);
 
-  async function distribute() {
+  async function distribute(contract: string, code: string) {
     if (!wallet) {
       setMessage("Connect your wallet first.");
       return;
     }
-    if (splitId === "") {
-      setMessage("Pick a split.");
-      return;
-    }
-    setBusy(true);
+    setDistributing(contract);
     setMessage(null);
     try {
       const client = walletClient(wallet);
       const tx = await client.distribute({
         id: BigInt(splitId),
-        token: token.contract,
+        token: contract,
       });
       const { result } = await tx.signAndSend();
       setMessage(
         result.isOk()
-          ? `Distributed ${fromStroops(result.unwrap())} ${token.code} to all recipients.`
+          ? `Distributed ${fromStroops(result.unwrap())} ${code} to all recipients.`
           : "Nothing to distribute.",
       );
-      await loadPending(splitId);
+      await loadBalances(splitId);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      setDistributing(null);
     }
   }
 
@@ -97,7 +121,7 @@ export default function EscrowCard({
       setMessage(
         result.isOk() ? `Deposited ${amount} ${token.code}.` : "Deposit failed.",
       );
-      await loadPending(splitId);
+      await loadBalances(splitId);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
@@ -121,11 +145,30 @@ export default function EscrowCard({
           ))}
         </select>
       </div>
-      {pending !== null && (
-        <p className="hint">
-          Pending: {fromStroops(pending)} {token.code}
-        </p>
+
+      {splitId !== "" && (
+        <div className="escrow-balances">
+          {loadError && <p className="note">{loadError}</p>}
+          {!loadError && balances.length === 0 && (
+            <p className="hint">No pending balances.</p>
+          )}
+          {balances.map((t) => (
+            <div className="row" key={t.contract}>
+              <span className="hint">
+                Pending: {fromStroops(t.balance)} {t.code}
+              </span>
+              <button
+                className="ghost"
+                disabled={distributing === t.contract}
+                onClick={() => distribute(t.contract, t.code)}
+              >
+                {distributing === t.contract ? "Working…" : "Distribute"}
+              </button>
+            </div>
+          ))}
+        </div>
       )}
+
       <div className="row">
         <input
           type="number"
@@ -140,13 +183,6 @@ export default function EscrowCard({
       <div className="row">
         <button disabled={busy} onClick={deposit}>
           {busy ? "Working…" : "Deposit"}
-        </button>
-        <button
-          className="ghost"
-          disabled={busy || !pending}
-          onClick={distribute}
-        >
-          Distribute
         </button>
       </div>
       {message && <p className="note">{message}</p>}

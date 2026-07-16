@@ -144,6 +144,13 @@ export interface Client {
    */
   transfer_control: ({id, new_controller}: {id: u64, new_controller: Option<string>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
+  /**
+   * Construct and simulate a held_tokens transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the list of token contract addresses that currently have a
+   * non-zero credited balance for the given split.
+   */
+  held_tokens: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Array<string>>>
+
 }
 export class Client extends ContractClient {
   static async deploy<T = Client>(
@@ -182,7 +189,8 @@ export class Client extends ContractClient {
         "AAAAAAAAADZSZXBsYWNlcyB0aGUgcmVjaXBpZW50cyBhbmQgc2hhcmVzIG9mIGEgbXV0YWJsZSBzcGxpdC4AAAAAAAx1cGRhdGVfc3BsaXQAAAADAAAAAAAAAAJpZAAAAAAABgAAAAAAAAAKcmVjaXBpZW50cwAAAAAD6gAAB9AAAAAJUmVjaXBpZW50AAAAAAAAAAAAAAZzaGFyZXMAAAAAA+oAAAAEAAAAAQAAA+kAAAACAAAAAw==",
         "AAAAAAAAAGZSZXR1cm5zIHRoZSBleGFjdCBwZXItcmVjaXBpZW50IGFtb3VudHMgYSBwYXltZW50IG9mIGBhbW91bnRgIHdvdWxkCnByb2R1Y2UsIHdpdGhvdXQgbW92aW5nIGFueSBmdW5kcy4AAAAAAA5wcmV2aWV3X3BheW91dAAAAAAAAgAAAAAAAAACaWQAAAAAAAYAAAAAAAAABmFtb3VudAAAAAAACwAAAAEAAAPpAAAD6gAAAAsAAAAD",
         "AAAAAAAAAGlIYW5kcyBjb250cm9sIG9mIGEgbXV0YWJsZSBzcGxpdCB0byBhbm90aGVyIGFkZHJlc3MsIG9yIGxvY2tzIGl0CmZvcmV2ZXIgd2hlbiB0aGUgbmV3IGNvbnRyb2xsZXIgaXMgTm9uZS4AAAAAAAAQdHJhbnNmZXJfY29udHJvbAAAAAIAAAAAAAAAAmlkAAAAAAAGAAAAAAAAAA5uZXdfY29udHJvbGxlcgAAAAAD6AAAABMAAAABAAAD6QAAAAIAAAAD",
-        "AAAABQAAAAAAAAAAAAAAEkNvbnRyb2xUcmFuc2ZlcnJlZAAAAAAAAQAAABNjb250cm9sX3RyYW5zZmVycmVkAAAAAAIAAAAAAAAAAmlkAAAAAAAGAAAAAQAAAAAAAAAObmV3X2NvbnRyb2xsZXIAAAAAA+gAAAATAAAAAAAAAAI=" ]),
+        "AAAABQAAAAAAAAAAAAAAEkNvbnRyb2xUcmFuc2ZlcnJlZAAAAAAAAQAAABNjb250cm9sX3RyYW5zZmVycmVkAAAAAAIAAAAAAAAAAmlkAAAAAAAGAAAAAQAAAAAAAAAObmV3X2NvbnRyb2xsZXIAAAAAA+gAAAATAAAAAAAAAAI=",
+        "AAAAAAAAAAAAAAALaGVsZF90b2tlbnMAAAAAAQAAAAAAAAACaWQAAAAAAAYAAAABAAAD6gAAABM=" ]),
       options
     )
   }
@@ -198,6 +206,7 @@ export class Client extends ContractClient {
         create_split: this.txFromJSON<Result<u64>>,
         update_split: this.txFromJSON<Result<void>>,
         preview_payout: this.txFromJSON<Result<Array<i128>>>,
-        transfer_control: this.txFromJSON<Result<void>>
+        transfer_control: this.txFromJSON<Result<void>>,
+        held_tokens: this.txFromJSON<Array<string>>
   }
 }
