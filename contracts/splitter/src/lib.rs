@@ -42,6 +42,7 @@ pub enum Error {
     /// contract stores. Can only happen if a share exceeds TOTAL_SHARES, which
     /// `validate` forbids, but we surface it as a typed error rather than panic.
     ArithmeticOverflow = 11,
+    SplitHasBalance = 12,
 }
 
 #[contracttype]
@@ -52,7 +53,7 @@ pub enum Recipient {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Split {
     pub recipients: Vec<Recipient>,
     pub shares: Vec<u32>,
@@ -89,6 +90,13 @@ pub struct SplitPaid {
 #[contractevent]
 #[derive(Clone)]
 pub struct SplitUpdated {
+    #[topic]
+    pub id: u64,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct SplitClosed {
     #[topic]
     pub id: u64,
 }
@@ -250,9 +258,30 @@ impl Splitter {
         Ok(())
     }
 
+    /// Closes a split and reclaims its storage. Only the controller can do this,
+    /// and only if the split holds no balances.
+    pub fn close_split(env: Env, id: u64) -> Result<(), Error> {
+        let split = load(&env, id)?;
+        let controller = split.controller.ok_or(Error::SplitImmutable)?;
+        controller.require_auth();
+
+        let tokens = Self::held_tokens(env.clone(), id);
+        if !tokens.is_empty() {
+            return Err(Error::SplitHasBalance);
+        }
+
+        env.storage().persistent().remove(&DataKey::Split(id));
+        SplitClosed { id }.publish(&env);
+        Ok(())
+    }
+
     /// Moves funds into the contract and credits them to the split without
     /// paying anyone yet. Useful when money arrives before a distribution
     /// should happen.
+    ///
+    /// Credits the amount the vault's balance actually increased by rather
+    /// than the requested `amount`, so fee-on-transfer tokens that deliver
+    /// less than requested cannot over-credit the split.
     pub fn deposit(
         env: Env,
         from: Address,
@@ -266,8 +295,13 @@ impl Splitter {
         }
         load(&env, id)?;
         let vault = env.current_contract_address();
-        token::Client::new(&env, &token).transfer(&from, &vault, &amount);
-        credit(&env, id, &token, amount);
+        let client = token::Client::new(&env, &token);
+        let before = client.balance(&vault);
+        client.transfer(&from, &vault, &amount);
+        let received = client.balance(&vault) - before;
+        if received > 0 {
+            credit(&env, id, &token, received);
+        }
         Ok(())
     }
 

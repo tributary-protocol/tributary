@@ -14,6 +14,9 @@ export function rowsError(rows: Row[]): string | null {
   if (Math.abs(rowsTotal(rows) - 100) > 0.001) {
     return "Shares must add up to 100%.";
   }
+  if (rows.some((r) => parseFloat(r.percent) <= 0 || isNaN(parseFloat(r.percent)))) {
+    return "Shares must be greater than zero.";
+  }
   if (rows.some((r) => r.value.trim() === "")) {
     return "Every recipient needs an address or split id.";
   }

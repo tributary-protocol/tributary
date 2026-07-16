@@ -83,19 +83,51 @@ export function decode(ev, responseCursor) {
 export async function poll({ server, contractId, outPath, statePath }) {
   let cursor = resolveCursor(statePath, outPath);
   const filters = [{ type: "contract", contractIds: [contractId] }];
+function cursorLedger(cursor) {
+  return Number(BigInt(cursor.split("-")[0]) >> 32n);
+}
+
+let isPolling = false;
+let shutdownRequested = false;
+let intervalId;
+
+function handleShutdown(signal) {
+  console.log(`Received ${signal}. Shutting down gracefully...`);
+  shutdownRequested = true;
+  if (intervalId) {
+    clearInterval(intervalId);
+  }
+  if (!isPolling) {
+    console.log("State flushed. Exiting cleanly.");
+    process.exit(0);
+  }
+}
+
+process.on("SIGINT", () => handleShutdown("SIGINT"));
+process.on("SIGTERM", () => handleShutdown("SIGTERM"));
+
+// getEvents scans at most ~10k ledgers per call, so one poll pages the
+// cursor forward until it catches up with the chain head.
+async function poll() {
+  if (shutdownRequested) return;
+  isPolling = true;
+  let cursor = loadCursor();
+  const filters = [{ type: "contract", contractIds: [CONTRACT_ID] }];
   let total = 0;
 
-  for (;;) {
-    const request = cursor
-      ? { cursor, filters, limit: 100 }
-      : {
-          startLedger: Math.max(
-            1,
-            (await server.getLatestLedger()).sequence - 100_000,
-          ),
-          filters,
-          limit: 100,
-        };
+  try {
+    for (;;) {
+      if (shutdownRequested) break;
+      const request = cursor
+        ? { cursor, filters, limit: 100 }
+        : {
+            startLedger: Math.max(
+              1,
+              (await server.getLatestLedger()).sequence - 100_000,
+            ),
+            filters,
+            limit: 100,
+          };
 
     const res = await server.getEvents(request);
     if (res.events.length > 0) {
@@ -139,3 +171,30 @@ async function main() {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main();
 }
+      const res = await server.getEvents(request);
+      for (const ev of res.events) {
+        appendFileSync(OUT, JSON.stringify(decode(ev)) + "\n");
+      }
+      total += res.events.length;
+
+      if (!res.cursor || res.cursor === cursor) break;
+      cursor = res.cursor;
+      saveCursor(cursor);
+      if (shutdownRequested) break;
+      if (res.events.length < 100 && cursorLedger(cursor) >= res.latestLedger) {
+        break;
+      }
+    }
+  } finally {
+    isPolling = false;
+    if (total > 0) console.log(`indexed ${total} events`);
+    if (shutdownRequested) {
+      console.log("State flushed. Exiting cleanly.");
+      process.exit(0);
+    }
+  }
+}
+
+console.log(`indexing ${CONTRACT_ID} from ${RPC_URL} every ${POLL_MS}ms`);
+await poll();
+intervalId = setInterval(() => poll().catch((e) => console.error(e.message ?? e)), POLL_MS);
