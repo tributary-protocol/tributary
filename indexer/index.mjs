@@ -1,9 +1,34 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { rpc, scValToNative } from "@stellar/stellar-sdk";
 
-const RPC_URL = process.env.RPC_URL ?? "https://soroban-testnet.stellar.org";
-const CONTRACT_ID =
-  process.env.CONTRACT_ID ?? "CCZXVZUQIZT673QF6ZGLI5AJLEPWUFWVYOPIOJNLNIOO5NI27V4JGJUU";
+const DEFAULT_RPC_URL = "https://soroban-testnet.stellar.org";
+const DEFAULT_CONTRACT_ID =
+  "CCZXVZUQIZT673QF6ZGLI5AJLEPWUFWVYOPIOJNLNIOO5NI27V4JGJUU";
+
+function validateConfig(env = process.env) {
+  const errors = [];
+  const RPC_URL = (env.RPC_URL ?? DEFAULT_RPC_URL).trim();
+  const CONTRACT_ID = (env.CONTRACT_ID ?? DEFAULT_CONTRACT_ID).trim();
+
+  if (!RPC_URL) errors.push("RPC_URL is required");
+  if (!CONTRACT_ID) errors.push("CONTRACT_ID is required");
+
+  if (errors.length > 0) {
+    return { ok: false, error: `Invalid indexer configuration:\n- ${errors.join("\n- ")}` };
+  }
+
+  return { ok: true, value: { RPC_URL, CONTRACT_ID } };
+}
+
+export { validateConfig };
+
+const config = validateConfig();
+if (!config.ok) {
+  console.error(config.error);
+  process.exit(1);
+}
+
+const { RPC_URL, CONTRACT_ID } = config.value;
 const OUT = process.env.OUT ?? "events.ndjson";
 const STATE = process.env.STATE ?? "state.json";
 const POLL_MS = Number(process.env.POLL_MS ?? 10_000);

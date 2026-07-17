@@ -14,6 +14,7 @@ const LABELS: Record<string, string> = {
 };
 
 export default function Activity({ items }: { items: ActivityItem[] }) {
+  const { t } = useTranslation();
   if (items.length === 0) return null;
 
   const { page, pageIndex, pageCount, next, prev } = usePagination(items, PAGE_SIZE);
@@ -43,8 +44,8 @@ export default function Activity({ items }: { items: ActivityItem[] }) {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5, delay: 0.2 }}
     >
-      <h2>Recent activity</h2>
-      <button onClick={exportCSV}>Export CSV</button>
+      <h2>{t("recentActivity")}</h2>
+      <button onClick={exportCSV}>{t("exportCsv")}</button>
       <ul>
         <AnimatePresence initial={false}>
           {page.map((item) => (
@@ -58,7 +59,7 @@ export default function Activity({ items }: { items: ActivityItem[] }) {
             >
               <span className="badge">{LABELS[item.type] ?? item.type}</span>
               <span>
-                {item.id !== undefined && `split #${String(item.id)}`}
+                {item.id !== undefined && ` ${t("activitySplitNum", { id: item.id.toString() })}`}
                 {item.amount !== undefined &&
                   ` · ${fromStroops(item.amount)} ${tokenCode(item.token)}`}
               </span>
