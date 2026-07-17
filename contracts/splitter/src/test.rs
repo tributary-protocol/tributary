@@ -292,6 +292,39 @@ fn rounding_dust_goes_to_last_recipient() {
 }
 
 #[test]
+fn rounding_dust_goes_to_last_recipient_when_split() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf_a = Address::generate(&s.env);
+    let leaf_b = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 100);
+
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf_a), acct(&leaf_b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b), Recipient::Split(child)],
+        &vec![&s.env, 3_333, 3_333, 3_334],
+        &None,
+    );
+
+    s.client.pay(&payer, &parent, &token_id, &100);
+
+    assert_eq!(token_client.balance(&a), 33);
+    assert_eq!(token_client.balance(&b), 33);
+    assert_eq!(s.client.balance(&child, &token_id), 34);
+    assert_eq!(token_client.balance(&payer), 0);
+}
+
+#[test]
 fn preview_matches_actual_payout() {
     let s = setup();
     let creator = Address::generate(&s.env);
