@@ -621,3 +621,26 @@ fn immutable_split_cannot_be_updated() {
         .try_update_split(&id, &vec![&s.env, acct(&b)], &vec![&s.env, 10_000]);
     assert_eq!(result, Err(Ok(Error::SplitImmutable)));
 }
+
+#[test]
+fn update_split_rejects_shares_not_summing_to_10_000() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &Some(controller.clone()),
+    );
+
+    let result = s.client.try_update_split(
+        &id,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 4_000],
+    );
+    assert_eq!(result, Err(Ok(Error::BadShareTotal)));
+}
