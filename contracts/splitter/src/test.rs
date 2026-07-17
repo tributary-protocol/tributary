@@ -1004,3 +1004,23 @@ fn immutable_split_cannot_be_updated() {
         .try_update_split(&id, &vec![&s.env, acct(&b)], &vec![&s.env, 10_000]);
     assert_eq!(result, Err(Ok(Error::SplitImmutable)));
 }
+
+#[test]
+fn has_split_checks_existence() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    assert!(!s.client.has_split(&0));
+    assert!(!s.client.has_split(&99));
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    assert!(s.client.has_split(&id));
+    assert!(!s.client.has_split(&99));
+}

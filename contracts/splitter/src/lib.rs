@@ -429,6 +429,10 @@ impl Splitter {
             .unwrap_or(0)
     }
 
+    pub fn has_split(env: Env, id: u64) -> bool {
+        env.storage().persistent().has(&DataKey::Split(id))
+    }
+
     pub fn get_split(env: Env, id: u64) -> Result<Split, Error> {
         load(&env, id)
     }
