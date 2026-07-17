@@ -8,9 +8,11 @@ import {
   TOKENS,
   EXPLORER,
 } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 import { CopyButton } from "./CopyButton";
 
 function Detail({ split }: { split: SplitView }) {
+  const { t } = useTranslation();
   const [balances, setBalances] = useState<{ code: string; amount: bigint }[]>([]);
 
   useEffect(() => {
@@ -43,19 +45,19 @@ function Detail({ split }: { split: SplitView }) {
       {split.recipients.map((r, i) => (
         <div className="detail-row" key={i}>
           <span className="mono">
-            {r.tag === "Account" ? r.values[0] : `split #${String(r.values[0])}`}
+            {r.tag === "Account" ? r.values[0] : t("nestedSplit", { id: r.values[0].toString() })}
           </span>
           <span>{(split.shares[i] / 100).toFixed(2).replace(/\.?0+$/, "")}%</span>
         </div>
       ))}
       {split.controller && (
         <div className="detail-row">
-          <span className="mono">controller: {split.controller}</span>
+          <span className="mono">{t("detailController", { controller: split.controller })}</span>
         </div>
       )}
       {balances.map((b) => (
         <div className="detail-row" key={b.code}>
-          <span>escrow</span>
+          <span>{t("detailEscrow")}</span>
           <span>
             {fromStroops(b.amount)} {b.code}
           </span>
@@ -74,17 +76,16 @@ export default function SplitList({
   loading: boolean;
   mine: Set<string>;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState<string | null>(null);
 
-  if (loading) return <p className="note">Loading splits…</p>;
+  if (loading) return <p className="note">{t("loadingSplits")}</p>;
   if (splits.length === 0) {
     return (
       <div className="empty">
-        <p>No splits on this contract yet.</p>
+        <p>{t("noSplitsOnContract")}</p>
         <p className="note">
-          Connect Freighter on testnet, open the Create tab and register the
-          first one. Testnet XLM is free from friendbot, so it costs nothing to
-          try.
+          {t("noSplitsPrompt")}
         </p>
       </div>
     );
@@ -92,7 +93,7 @@ export default function SplitList({
 
   return (
     <section>
-      <h2>Recent splits</h2>
+      <h2>{t("recentSplits")}</h2>
       <div className="splits">
         {splits.map((s, index) => {
           const key = String(s.id);
@@ -110,12 +111,12 @@ export default function SplitList({
               <div className="split-head">
                 <span className="split-id">#{key}</span>
                 <CopyButton text={String(key)}>
-                  Copy
+                  {t("copy")}
                 </CopyButton>
                 <span>
-                  {mine.has(key) && <span className="badge own">yours</span>}
+                  {mine.has(key) && <span className="badge own">{t("yours")}</span>}
                   <span className="badge">
-                    {s.controller ? "mutable" : "locked"}
+                    {s.controller ? t("mutable") : t("locked")}
                   </span>
                 </span>
               </div>
@@ -133,11 +134,11 @@ export default function SplitList({
                           {recipientLabel(r)}
                         </a>
                         <CopyButton text={r.values[0]}>
-                          Copy
+                          {t("copy")}
                         </CopyButton>
                       </>
                     ) : (
-                      <span className="nested">{recipientLabel(r)}</span>
+                      <span className="nested">{t("nestedSplit", { id: r.values[0].toString() })}</span>
                     )}
                     <span>{(s.shares[i] / 100).toFixed(2).replace(/\.?0+$/, "")}%</span>
                   </li>

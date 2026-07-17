@@ -1,17 +1,19 @@
 import { AnimatePresence, motion } from "motion/react";
 import { fromStroops, tokenCode, ActivityItem, EXPLORER } from "../lib/tributary";
-
-const LABELS: Record<string, string> = {
-  split_created: "created",
-  split_paid: "paid",
-  split_updated: "updated",
-  deposited: "deposit",
-  distributed: "distributed",
-  control_transferred: "control moved",
-};
+import { useTranslation } from "../lib/i18n";
 
 export default function Activity({ items }: { items: ActivityItem[] }) {
+  const { t } = useTranslation();
   if (items.length === 0) return null;
+
+  const LABELS: Record<string, string> = {
+    split_created: t("activityCreated"),
+    split_paid: t("activityPaid"),
+    split_updated: t("activityUpdated"),
+    deposited: t("activityDeposit"),
+    distributed: t("activityDistributed"),
+    control_transferred: t("activityControlMoved"),
+  };
 
   const exportCSV = () => {
     const header = "eventId,type,id,amount,token,ledger,txHash";
@@ -38,8 +40,8 @@ export default function Activity({ items }: { items: ActivityItem[] }) {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5, delay: 0.2 }}
     >
-      <h2>Recent activity</h2>
-      <button onClick={exportCSV}>Export CSV</button>
+      <h2>{t("recentActivity")}</h2>
+      <button onClick={exportCSV}>{t("exportCsv")}</button>
       <ul>
         <AnimatePresence initial={false}>
           {items.map((item) => (
@@ -53,7 +55,7 @@ export default function Activity({ items }: { items: ActivityItem[] }) {
             >
               <span className="badge">{LABELS[item.type] ?? item.type}</span>
               <span>
-                {item.id !== undefined && `split #${String(item.id)}`}
+                {item.id !== undefined && ` ${t("activitySplitNum", { id: item.id.toString() })}`}
                 {item.amount !== undefined &&
                   ` · ${fromStroops(item.amount)} ${tokenCode(item.token)}`}
               </span>
