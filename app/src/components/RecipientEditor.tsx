@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Recipient } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 
@@ -49,8 +50,32 @@ export default function RecipientEditor({
   onChange: (rows: Row[]) => void;
 }) {
   const { t } = useTranslation();
+  const [useBps, setUseBps] = useState(false);
+
   function setRow(i: number, patch: Partial<Row>) {
     onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  }
+
+  function displayValue(percentStr: string) {
+    if (useBps) {
+      if (!percentStr) return "";
+      const val = parseFloat(percentStr) * 100;
+      return isNaN(val) ? "" : String(val);
+    }
+    return percentStr;
+  }
+
+  function updateValue(inputStr: string, i: number) {
+    if (useBps) {
+      if (!inputStr) {
+        setRow(i, { percent: "" });
+      } else {
+        const val = parseFloat(inputStr) / 100;
+        setRow(i, { percent: isNaN(val) ? "" : String(val) });
+      }
+    } else {
+      setRow(i, { percent: inputStr });
+    }
   }
 
   const total = rowsTotal(rows);
@@ -78,11 +103,12 @@ export default function RecipientEditor({
             className="pct"
             type="number"
             min="0"
-            max="100"
-            value={row.percent}
-            onChange={(e) => setRow(i, { percent: e.target.value })}
+            max={useBps ? "10000" : "100"}
+            step={useBps ? "1" : "any"}
+            value={displayValue(row.percent)}
+            onChange={(e) => updateValue(e.target.value, i)}
           />
-          <span className="unit" title="Percentage of the total payment this recipient receives. Stored on-chain as basis points (1% = 100 basis points).">% ⓘ</span>
+          <span className="unit" title={useBps ? t("unitBpsTitle") : t("unitPctTitle")}>{useBps ? "bps ⓘ" : "% ⓘ"}</span>
           {rows.length > 1 && (
             <button
               className="ghost"
@@ -103,8 +129,18 @@ export default function RecipientEditor({
         >
           {t("addRecipient")}
         </button>
+        <label className="toggle-bps">
+          <input
+            type="checkbox"
+            checked={useBps}
+            onChange={(e) => setUseBps(e.target.checked)}
+          />
+          {t("useBasisPoints")}
+        </label>
         <span className={Math.abs(total - 100) < 0.001 ? "total ok" : "total"}>
-          {t("pctOfTotal", { pct: Number(total.toFixed(2)).toString() })}
+          {useBps
+            ? t("bpsOfTotal", { bps: Math.round(total * 100).toString() })
+            : t("pctOfTotal", { pct: Number(total.toFixed(2)).toString() })}
         </span>
       </div>
     </>
