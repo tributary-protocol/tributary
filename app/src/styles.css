@@ -320,6 +320,51 @@ button.small {
   margin-bottom: 16px;
 }
 
+.background-error {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  max-width: 320px;
+  background: #2a1420;
+  border: 1px solid #5c2740;
+  border-radius: 9px;
+  padding: 12px 14px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: slideIn 0.3s ease-out;
+  z-index: 100;
+}
+
+.background-error span {
+  flex: 1;
+}
+
+.background-error button {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.background-error button.ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 5px 10px;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 h2 {
   font-size: 16px;
   font-weight: 650;
@@ -500,4 +545,5 @@ select.lang-select:focus {
   select.kind, input.pct { width: 100%; flex: none; }
   .row.actions { gap: 6px; }
   button.small { font-size: 11px; padding: 4px 8px; }
+  .background-error { bottom: 12px; right: 12px; max-width: calc(100vw - 24px); }
 }

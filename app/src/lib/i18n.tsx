@@ -95,6 +95,10 @@ const translations = {
     activityControlMoved: "control moved",
     activityTx: "tx",
     activitySplitNum: "split #{id}",
+    // Refresh Errors
+    refreshFailed: "Data refresh failed. Your data may be stale.",
+    retryButton: "Retry",
+    dismissButton: "Dismiss",
     // Footer
     contractOnTestnet: "Contract on testnet",
   },
@@ -190,6 +194,10 @@ const translations = {
     activityControlMoved: "đã chuyển quyền",
     activityTx: "tx",
     activitySplitNum: "danh sách chia #{id}",
+    // Refresh Errors
+    refreshFailed: "Làm mới dữ liệu không thành công. Dữ liệu của bạn có thể không được cập nhật.",
+    retryButton: "Thử lại",
+    dismissButton: "Bỏ qua",
     // Footer
     contractOnTestnet: "Hợp đồng trên testnet",
   },

@@ -32,6 +32,7 @@ export default function App() {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [backgroundError, setBackgroundError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -46,12 +47,20 @@ export default function App() {
       setActivity(nextActivity);
       setMine(nextMine);
       setError(null);
+      setBackgroundError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      if (loading) {
+        // Initial load failure - show blocking error
+        setError(errorMsg);
+      } else {
+        // Background refresh failure - show non-blocking indicator
+        setBackgroundError(errorMsg);
+      }
     } finally {
       setLoading(false);
     }
-  }, [wallet]);
+  }, [wallet, loading]);
 
   useEffect(() => {
     refresh();
@@ -129,6 +138,16 @@ export default function App() {
         >
           <SplitList splits={splits} loading={loading} mine={mine} />
         </motion.div>
+
+        {backgroundError && (
+          <div className="background-error">
+            <span>{t("refreshFailed")}</span>
+            <button onClick={() => refresh()}>{t("retryButton")}</button>
+            <button className="ghost" onClick={() => setBackgroundError(null)}>
+              {t("dismissButton")}
+            </button>
+          </div>
+        )}
 
         <Activity items={activity} />
       </main>
