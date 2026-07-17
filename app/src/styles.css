@@ -460,6 +460,20 @@ footer {
   color: var(--muted);
 }
 
+select.lang-select {
+  width: auto;
+  padding: 6px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+select.lang-select:focus {
+  border-color: var(--accent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;
