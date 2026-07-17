@@ -1,5 +1,8 @@
 import { AnimatePresence, motion } from "motion/react";
 import { fromStroops, tokenCode, ActivityItem, EXPLORER } from "../lib/tributary";
+import { usePagination } from "../lib/usePagination";
+
+export const PAGE_SIZE = 10;
 
 const LABELS: Record<string, string> = {
   split_created: "created",
@@ -12,6 +15,8 @@ const LABELS: Record<string, string> = {
 
 export default function Activity({ items }: { items: ActivityItem[] }) {
   if (items.length === 0) return null;
+
+  const { page, pageIndex, pageCount, next, prev } = usePagination(items, PAGE_SIZE);
 
   const exportCSV = () => {
     const header = "eventId,type,id,amount,token,ledger,txHash";
@@ -42,7 +47,7 @@ export default function Activity({ items }: { items: ActivityItem[] }) {
       <button onClick={exportCSV}>Export CSV</button>
       <ul>
         <AnimatePresence initial={false}>
-          {items.map((item) => (
+          {page.map((item) => (
             <motion.li
               key={item.eventId}
               layout
@@ -68,6 +73,27 @@ export default function Activity({ items }: { items: ActivityItem[] }) {
           ))}
         </AnimatePresence>
       </ul>
+      {pageCount > 1 && (
+        <div className="activity-pager">
+          <button
+            className="ghost small"
+            disabled={pageIndex === 0}
+            onClick={prev}
+          >
+            ← Prev
+          </button>
+          <span>
+            Page {pageIndex + 1} of {pageCount}
+          </span>
+          <button
+            className="ghost small"
+            disabled={pageIndex === pageCount - 1}
+            onClick={next}
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </motion.section>
   );
 }
