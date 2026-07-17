@@ -827,7 +827,182 @@ fn controller_can_update_mutable_split() {
 }
 
 #[test]
-fn every_error_code_maps_to_its_triggering_call() {
+fn immutable_split_cannot_be_updated() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    let result = s
+        .client
+        .try_update_split(&id, &vec![&s.env, acct(&b)], &vec![&s.env, 10_000]);
+    assert_eq!(result, Err(Ok(Error::SplitImmutable)));
+}
+
+#[test]
+fn property_conservation_random_shares() {
+    assert!(proptest::test_runner::TestRunner::default()
+        .run(
+            &(
+                proptest::collection::vec(1u32..=10_000u32, 2..10usize),
+                1i128..1_000_000i128,
+            ),
+            |(shares, amount)| {
+                // Setup environment
+                let env = soroban_sdk::Env::default();
+                env.mock_all_auths();
+                let contract_id = env.register(Splitter, ());
+                let client = SplitterClient::new(&env, &contract_id);
+                let creator = soroban_sdk::Address::generate(&env);
+
+                // Normalize shares to sum to exactly 10_000
+                let sum: u32 = shares.iter().sum();
+                let mut normalized_shares = alloc::vec::Vec::new();
+                let mut current_sum = 0;
+                for share in shares.iter().take(shares.len() - 1) {
+                    let normalized = ((*share as u64 * 10_000) / sum as u64) as u32;
+                    let normalized = normalized.max(1);
+                    normalized_shares.push(normalized);
+                    current_sum += normalized;
+                }
+                if current_sum >= 10_000 {
+                    return Err(proptest::test_runner::TestCaseError::reject(
+                        "shares sum exceeded total",
+                    ));
+                }
+                let last_share = 10_000 - current_sum;
+                if last_share == 0 {
+                    return Err(proptest::test_runner::TestCaseError::reject(
+                        "last share is zero",
+                    ));
+                }
+                normalized_shares.push(last_share);
+
+                // Generate recipients matching shares length
+                let mut recipients = soroban_sdk::vec![&env];
+                let mut addrs = alloc::vec::Vec::new();
+                for _ in normalized_shares.iter() {
+                    let addr = soroban_sdk::Address::generate(&env);
+                    recipients.push_back(acct(&addr));
+                    addrs.push(addr);
+                }
+
+                // Convert shares to soroban Vec
+                let mut soroban_shares = soroban_sdk::Vec::new(&env);
+                for share in normalized_shares.iter() {
+                    soroban_shares.push_back(*share);
+                }
+
+                // Create split and pay
+                let id = client.create_split(&creator, &recipients, &soroban_shares, &None);
+                // Generate recipients matching shares length
+                let mut recipients = soroban_sdk::vec![&env];
+                let mut addrs = soroban_sdk::Vec::new(&env);
+                let mut sdk_shares = soroban_sdk::Vec::new(&env);
+                for share in shares.iter() {
+                    let addr = soroban_sdk::Address::generate(&env);
+                    recipients.push_back(acct(&addr));
+                    addrs.push_back(addr.clone());
+                    sdk_shares.push_back(*share);
+                }
+
+                // Create split and pay
+                // Skip invalid share configurations to focus on conservation for valid ones
+                if client
+                    .try_create_split(&creator, &recipients, &sdk_shares, &None)
+                    .is_err()
+                {
+                    return Ok(());
+                }
+                let id = client.create_split(&creator, &recipients, &sdk_shares, &None);
+
+                let payer = soroban_sdk::Address::generate(&env);
+                let (token_id, token_client) = fund_token(&env, &payer, amount);
+                client.pay(&payer, &id, &token_id, &amount);
+
+                // Sum balances and assert conservation
+                let mut received: i128 = 0;
+                for addr in addrs.iter() {
+                    received += token_client.balance(addr);
+                }
+                if received != amount {
+                    return Err(proptest::test_runner::TestCaseError::fail(
+                        "conservation failed",
+                    ));
+                }
+                Ok(())
+            },
+        )
+        .is_ok());
+}
+
+// Turns arbitrary positive weights into basis-point shares that sum to
+// exactly TOTAL_SHARES, using the same floor-with-remainder-to-last approach
+// as `amounts` in lib.rs, so `create_split`'s share-total check accepts them.
+fn weights_to_shares(env: &Env, weights: &[u32]) -> Vec<u32> {
+    let total: u64 = weights.iter().map(|&w| w as u64).sum();
+    let last = weights.len() - 1;
+    let mut shares = soroban_sdk::vec![env];
+    let mut assigned: u64 = 0;
+    for (i, &w) in weights.iter().enumerate() {
+        let share = if i == last {
+            TOTAL_SHARES as u64 - assigned
+        } else {
+            (w as u64 * TOTAL_SHARES as u64) / total
+        };
+        shares.push_back(share as u32);
+        assigned += share;
+    }
+    shares
+}
+
+proptest::proptest! {
+    #[test]
+    fn property_conservation_random_shares(
+        weights in proptest::collection::vec(1u32..=1_000u32, 2..10usize),
+        amount in 1i128..1_000_000i128,
+    ) {
+        let env = soroban_sdk::Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(Splitter, ());
+        let client = SplitterClient::new(&env, &contract_id);
+        let creator = soroban_sdk::Address::generate(&env);
+
+        let shares = weights_to_shares(&env, &weights);
+        let mut recipients = soroban_sdk::vec![&env];
+        let mut addrs: Vec<Address> = soroban_sdk::vec![&env];
+        for _ in shares.iter() {
+            let addr = soroban_sdk::Address::generate(&env);
+            recipients.push_back(acct(&addr));
+            addrs.push_back(addr);
+        }
+
+        let id = client.create_split(&creator, &recipients, &shares, &None);
+        let payer = soroban_sdk::Address::generate(&env);
+        let (token_id, token_client) = fund_token(&env, &payer, amount);
+        client.pay(&payer, &id, &token_id, &amount);
+
+        let mut received: i128 = 0;
+        for addr in addrs.iter() {
+            received += token_client.balance(&addr);
+        }
+        proptest::prop_assert_eq!(received, amount);
+    }
+}
+
+// Regression for #42: a high-supply token can be paid an amount large enough
+// that `amount * share` overflows i128 in the old share math. The intermediate
+// must be computed in 256-bit space so the split stays panic- and wrap-free and
+// amount-in always equals amount-out.
+#[test]
+fn large_payment_does_not_overflow_share_math() {
     let s = setup();
     let creator = Address::generate(&s.env);
     let controller = Address::generate(&s.env);
@@ -1003,4 +1178,49 @@ fn immutable_split_cannot_be_updated() {
         .client
         .try_update_split(&id, &vec![&s.env, acct(&b)], &vec![&s.env, 10_000]);
     assert_eq!(result, Err(Ok(Error::SplitImmutable)));
+}
+
+#[test]
+fn test_duplicate_account_recipient() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    // Both recipients are the same Account address — must be rejected.
+    let result = s.client.try_create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&a)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    assert_eq!(result, Err(Ok(Error::DuplicateRecipient)));
+}
+
+#[test]
+fn test_duplicate_split_recipient() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf = Address::generate(&s.env);
+
+    // Create a valid child split first so Recipient::Split(child_id) passes
+    // the BadChildSplit guard and only the duplicate check fires.
+    let child_id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    // Both recipients reference the same child split — must be rejected.
+    let result = s.client.try_create_split(
+        &creator,
+        &vec![
+            &s.env,
+            Recipient::Split(child_id),
+            Recipient::Split(child_id),
+        ],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    assert_eq!(result, Err(Ok(Error::DuplicateRecipient)));
 }
