@@ -5,6 +5,7 @@ import {
   toStroops,
   fromStroops,
   TOKENS,
+  Token,
   SplitView,
 } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
@@ -21,31 +22,39 @@ export default function EscrowCard({
   const [splitId, setSplitId] = useState("");
   const [amount, setAmount] = useState("");
   const [token, setToken] = useState(TOKENS[0]);
-  const [pending, setPending] = useState<bigint | null>(null);
+  const [pendingBalances, setPendingBalances] = useState<Record<string, bigint>>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function loadPending(id: string) {
+  async function loadAllPending(id: string) {
     if (id === "") {
-      setPending(null);
+      setPendingBalances({});
       return;
     }
-    try {
-      const { result } = await readClient().balance({
-        id: BigInt(id),
-        token: token.contract,
-      });
-      setPending(result);
-    } catch {
-      setPending(null);
-    }
+    const results: Record<string, bigint> = {};
+    await Promise.all(
+      TOKENS.map(async (tk) => {
+        try {
+          const { result } = await readClient().balance({
+            id: BigInt(id),
+            token: tk.contract,
+          });
+          if (result > 0n) {
+            results[tk.contract] = result;
+          }
+        } catch {
+          // no balance for this token
+        }
+      }),
+    );
+    setPendingBalances(results);
   }
 
   useEffect(() => {
-    loadPending(splitId);
-  }, [splitId, token]);
+    loadAllPending(splitId);
+  }, [splitId]);
 
-  async function distribute() {
+  async function distributeToken(tk: Token) {
     if (!wallet) {
       setMessage(t("connectWalletFirst"));
       return;
@@ -60,15 +69,15 @@ export default function EscrowCard({
       const client = walletClient(wallet);
       const tx = await client.distribute({
         id: BigInt(splitId),
-        token: token.contract,
+        token: tk.contract,
       });
       const { result } = await tx.signAndSend();
       setMessage(
         result.isOk()
-          ? t("distributeSuccess", { amount: fromStroops(result.unwrap()), token: token.code })
+          ? t("distributeSuccess", { amount: fromStroops(result.unwrap()), token: tk.code })
           : t("distributeFailed"),
       );
-      await loadPending(splitId);
+      await loadAllPending(splitId);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
@@ -101,13 +110,15 @@ export default function EscrowCard({
           ? t("depositSuccess", { amount, token: token.code })
           : t("depositFailed"),
       );
-      await loadPending(splitId);
+      await loadAllPending(splitId);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   }
+
+  const pendingTokens = TOKENS.filter((tk) => pendingBalances[tk.contract] !== undefined);
 
   return (
     <section className="card">
@@ -125,11 +136,20 @@ export default function EscrowCard({
           ))}
         </select>
       </div>
-      {pending !== null && (
-        <p className="hint">
-          {t("pending", { amount: fromStroops(pending), token: token.code })}
-        </p>
-      )}
+      {pendingTokens.map((tk) => (
+        <div key={tk.contract} className="row">
+          <p className="hint" style={{ flex: 1, margin: 0 }}>
+            {t("pending", { amount: fromStroops(pendingBalances[tk.contract]), token: tk.code })}
+          </p>
+          <button
+            className="ghost"
+            disabled={busy}
+            onClick={() => distributeToken(tk)}
+          >
+            {t("distributeButton")}
+          </button>
+        </div>
+      ))}
       <div className="row">
         <input
           type="number"
@@ -144,13 +164,6 @@ export default function EscrowCard({
       <div className="row">
         <button disabled={busy} onClick={deposit}>
           {busy ? t("working") : t("depositButton")}
-        </button>
-        <button
-          className="ghost"
-          disabled={busy || !pending}
-          onClick={distribute}
-        >
-          {t("distributeButton")}
         </button>
       </div>
       {message && <p className="note">{message}</p>}
