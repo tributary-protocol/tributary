@@ -21,6 +21,7 @@ import type {
   Timepoint,
   Duration,
 } from "@stellar/stellar-sdk/contract";
+import { Server as RpcServer, Api } from "@stellar/stellar-sdk/rpc";
 export * from "@stellar/stellar-sdk";
 export * as contract from "@stellar/stellar-sdk/contract";
 export * as rpc from "@stellar/stellar-sdk/rpc";
@@ -200,4 +201,45 @@ export class Client extends ContractClient {
         preview_payout: this.txFromJSON<Result<Array<i128>>>,
         transfer_control: this.txFromJSON<Result<void>>
   }
+}
+
+/**
+ * Polls for a transaction to be confirmed or fail, with a timeout.
+ *
+ * @param txHash - Hex-encoded hash of the transaction to wait for.
+ * @param options - Optional configuration.
+ * @param options.rpcUrl - RPC server URL. Defaults to Soroban testnet.
+ * @param options.timeout - Max wait time in ms. Default 30_000.
+ * @param options.pollInterval - Time between polls in ms. Default 1_000.
+ * @returns The successful or failed transaction response.
+ * @throws If the transaction is not confirmed within the timeout.
+ */
+export async function waitForConfirmation(
+  txHash: string,
+  options?: {
+    rpcUrl?: string;
+    timeout?: number;
+    pollInterval?: number;
+  },
+): Promise<Api.GetSuccessfulTransactionResponse | Api.GetFailedTransactionResponse> {
+  const rpcUrl = options?.rpcUrl ?? "https://soroban-testnet.stellar.org";
+  const timeout = options?.timeout ?? 30_000;
+  const pollInterval = options?.pollInterval ?? 1_000;
+  const server = new RpcServer(rpcUrl);
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() < deadline) {
+    const response = await server.getTransaction(txHash);
+    if (response.status === Api.GetTransactionStatus.SUCCESS) {
+      return response as Api.GetSuccessfulTransactionResponse;
+    }
+    if (response.status === Api.GetTransactionStatus.FAILED) {
+      return response as Api.GetFailedTransactionResponse;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+  }
+
+  throw new Error(
+    `Transaction ${txHash} was not confirmed within ${timeout / 1_000}s`,
+  );
 }
