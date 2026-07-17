@@ -9,7 +9,7 @@ license = "Apache-2.0"
 repository = "https://github.com/tributary-protocol/tributary"
 
 [workspace.dependencies]
-soroban-sdk = "26.1.0"
+soroban-sdk = "27.0.0"
 proptest = "1.0"
 
 [profile.release]

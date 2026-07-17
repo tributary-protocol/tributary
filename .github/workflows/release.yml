@@ -1,0 +1,78 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - run: rustup update stable
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - run: rustup update stable && rustup target add wasm32v1-none
+      - run: cargo build --release --target wasm32v1-none -p tributary-splitter
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npm ci && npm run build
+        working-directory: sdk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tributary-splitter-wasm
+          path: target/wasm32v1-none/release/tributary_splitter.wasm
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tributary-splitter-wasm
+          path: dist-wasm
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist-wasm/tributary_splitter.wasm \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install SDK dependencies
+        run: npm ci
+        working-directory: sdk
+
+      - name: Build SDK
+        run: npm run build
+        working-directory: sdk
+
+      - name: Publish SDK to npm
+        run: npm publish --provenance --access public
+        working-directory: sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
