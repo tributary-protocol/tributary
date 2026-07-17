@@ -725,6 +725,7 @@ fn large_payment_does_not_overflow_share_math() {
     assert_eq!(a_bal + b_bal + c_bal, amount);
     assert_eq!(token_client.balance(&payer), 0);
 }
+
 #[test]
 fn held_tokens_tracking() {
     let s = setup();

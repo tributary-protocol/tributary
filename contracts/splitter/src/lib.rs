@@ -135,8 +135,17 @@ impl Splitter {
     /// Registers a new split and returns its id. Shares are basis points
     /// and must sum to exactly 10_000. Passing a controller makes the
     /// split mutable by that address; passing None locks it forever.
+    ///
+    /// # Errors
+    ///
+    /// * `NoRecipients` - if `recipients` is empty.
+    /// * `TooManyRecipients` - if `recipients` exceeds `MAX_RECIPIENTS`.
+    /// * `LengthMismatch` - if `recipients` and `shares` have different lengths.
+    /// * `ZeroShare` - if any share is zero.
+    /// * `BadShareTotal` - if shares do not sum to `TOTAL_SHARES`.
+    /// * `BadChildSplit` - if a child split reference is invalid.
     pub fn create_split(
-        env: Env,
+        env: &Env,
         creator: Address,
         recipients: Vec<Recipient>,
         shares: Vec<u32>,
@@ -171,8 +180,13 @@ impl Splitter {
 
     /// Moves `amount` of `token` from the payer to every recipient of the
     /// split in one call. Rounding dust goes to the last recipient.
+    ///
+    /// # Errors
+    ///
+    /// * `InvalidAmount` - if `amount` is not positive.
+    /// * `SplitNotFound` - if `id` does not exist.
     pub fn pay(
-        env: Env,
+        env: &Env,
         from: Address,
         id: u64,
         token: Address,
@@ -190,8 +204,15 @@ impl Splitter {
 
     /// Pays several splits from one signer in a single transaction.
     /// `ids` and `amounts` pair up positionally; any failure reverts all.
+    ///
+    /// # Errors
+    ///
+    /// * `NoRecipients` - if `ids` or `amounts` is empty.
+    /// * `LengthMismatch` - if `ids` and `amounts` have different lengths.
+    /// * `InvalidAmount` - if any amount is not positive.
+    /// * `SplitNotFound` - if any `id` does not exist.
     pub fn pay_many(
-        env: Env,
+        env: &Env,
         from: Address,
         ids: Vec<u64>,
         amounts: Vec<i128>,
@@ -225,8 +246,19 @@ impl Splitter {
     }
 
     /// Replaces the recipients and shares of a mutable split.
+    ///
+    /// # Errors
+    ///
+    /// * `SplitNotFound` - if `id` does not exist.
+    /// * `SplitImmutable` - if the split has no controller.
+    /// * `NoRecipients` - if `recipients` is empty.
+    /// * `TooManyRecipients` - if `recipients` exceeds `MAX_RECIPIENTS`.
+    /// * `LengthMismatch` - if `recipients` and `shares` have different lengths.
+    /// * `ZeroShare` - if any share is zero.
+    /// * `BadShareTotal` - if shares do not sum to `TOTAL_SHARES`.
+    /// * `BadChildSplit` - if a child split reference is invalid.
     pub fn update_split(
-        env: Env,
+        env: &Env,
         id: u64,
         recipients: Vec<Recipient>,
         shares: Vec<u32>,
@@ -244,8 +276,13 @@ impl Splitter {
 
     /// Hands control of a mutable split to another address, or locks it
     /// forever when the new controller is None.
+    ///
+    /// # Errors
+    ///
+    /// * `SplitNotFound` - if `id` does not exist.
+    /// * `SplitImmutable` - if the split has no controller.
     pub fn transfer_control(
-        env: Env,
+        env: &Env,
         id: u64,
         new_controller: Option<Address>,
     ) -> Result<(), Error> {
@@ -260,7 +297,13 @@ impl Splitter {
 
     /// Closes a split and reclaims its storage. Only the controller can do this,
     /// and only if the split holds no balances.
-    pub fn close_split(env: Env, id: u64) -> Result<(), Error> {
+    ///
+    /// # Errors
+    ///
+    /// * `SplitNotFound` - if `id` does not exist.
+    /// * `SplitImmutable` - if the split has no controller.
+    /// * `SplitHasBalance` - if the split still holds funds.
+    pub fn close_split(env: &Env, id: u64) -> Result<(), Error> {
         let split = load(&env, id)?;
         let controller = split.controller.ok_or(Error::SplitImmutable)?;
         controller.require_auth();
@@ -282,8 +325,13 @@ impl Splitter {
     /// Credits the amount the vault's balance actually increased by rather
     /// than the requested `amount`, so fee-on-transfer tokens that deliver
     /// less than requested cannot over-credit the split.
+    ///
+    /// # Errors
+    ///
+    /// * `InvalidAmount` - if `amount` is not positive.
+    /// * `SplitNotFound` - if `id` does not exist.
     pub fn deposit(
-        env: Env,
+        env: &Env,
         from: Address,
         id: u64,
         token: Address,
@@ -307,7 +355,12 @@ impl Splitter {
 
     /// Pays out everything credited to the split for the given token.
     /// Anyone can call this; the routing table decides where funds go.
-    pub fn distribute(env: Env, id: u64, token: Address) -> Result<i128, Error> {
+    ///
+    /// # Errors
+    ///
+    /// * `SplitNotFound` - if `id` does not exist.
+    /// * `NothingToDistribute` - if the split holds no balance for `token`.
+    pub fn distribute(env: &Env, id: u64, token: Address) -> Result<i128, Error> {
         let split = load(&env, id)?;
         let key = DataKey::Balance(id, token.clone());
         let amount: i128 = env.storage().persistent().get(&key).unwrap_or(0);
@@ -350,7 +403,12 @@ impl Splitter {
 
     /// Returns the exact per-recipient amounts a payment of `amount` would
     /// produce, without moving any funds.
-    pub fn preview_payout(env: Env, id: u64, amount: i128) -> Result<Vec<i128>, Error> {
+    ///
+    /// # Errors
+    ///
+    /// * `InvalidAmount` - if `amount` is not positive.
+    /// * `SplitNotFound` - if `id` does not exist.
+    pub fn preview_payout(env: &Env, id: u64, amount: i128) -> Result<Vec<i128>, Error> {
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
@@ -358,32 +416,41 @@ impl Splitter {
         amounts(&env, &split, amount)
     }
 
-    pub fn balance(env: Env, id: u64, token: Address) -> i128 {
+    #[must_use]
+    pub fn balance(env: &Env, id: u64, token: Address) -> i128 {
         env.storage()
             .persistent()
             .get(&DataKey::Balance(id, token))
             .unwrap_or(0)
     }
 
-    pub fn get_split(env: Env, id: u64) -> Result<Split, Error> {
+    /// Returns the split configuration for `id`.
+    ///
+    /// # Errors
+    ///
+    /// * `SplitNotFound` - if `id` does not exist.
+    pub fn get_split(env: &Env, id: u64) -> Result<Split, Error> {
         load(&env, id)
     }
 
-    pub fn held_tokens(env: Env, id: u64) -> Vec<Address> {
+    #[must_use]
+    pub fn held_tokens(env: &Env, id: u64) -> Vec<Address> {
         env.storage()
             .persistent()
             .get(&DataKey::HeldTokens(id))
             .unwrap_or_else(|| Vec::new(&env))
     }
 
-    pub fn splits_of(env: Env, creator: Address) -> Vec<u64> {
+    #[must_use]
+    pub fn splits_of(env: &Env, creator: Address) -> Vec<u64> {
         env.storage()
             .persistent()
             .get(&DataKey::Created(creator))
             .unwrap_or_else(|| Vec::new(&env))
     }
 
-    pub fn split_count(env: Env) -> u64 {
+    #[must_use]
+    pub fn split_count(env: &Env) -> u64 {
         env.storage().instance().get(&DataKey::Count).unwrap_or(0)
     }
 }
