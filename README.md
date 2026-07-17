@@ -97,6 +97,8 @@ app                  web dashboard (Vite + React, Freighter wallet)
 
 [docs/glossary.md](docs/glossary.md) defines core terms like split, share, controller, escrow and dust.
 
+[docs/events.md](docs/events.md) documents every contract event: topic layout, data fields and how to decode them in an indexer.
+
 ## Contributing
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get set up and what a good change looks like.
