@@ -9,6 +9,7 @@ import {
   TOKENS,
   SplitView,
 } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 import TokenPicker from "./TokenPicker";
 
 interface TokenBalance {
@@ -24,6 +25,7 @@ export default function EscrowCard({
   wallet: string | null;
   splits: SplitView[];
 }) {
+  const { t } = useTranslation();
   const [splitId, setSplitId] = useState("");
   const [amount, setAmount] = useState("");
   const [token, setToken] = useState(TOKENS[0]);
@@ -60,7 +62,7 @@ export default function EscrowCard({
         }),
       );
       // Filter out any zero balances that may have been cleared since fetchHeldTokens ran
-      setBalances(items.filter((t) => t.balance > 0n));
+      setBalances(items.filter((tk) => tk.balance > 0n));
     } catch {
       setLoadError("Failed to load pending balances.");
       setBalances([]);
@@ -73,7 +75,7 @@ export default function EscrowCard({
 
   async function distribute(contract: string, code: string) {
     if (!wallet) {
-      setMessage("Connect your wallet first.");
+      setMessage(t("connectWalletFirst"));
       return;
     }
     setDistributing(contract);
@@ -87,8 +89,8 @@ export default function EscrowCard({
       const { result } = await tx.signAndSend();
       setMessage(
         result.isOk()
-          ? `Distributed ${fromStroops(result.unwrap())} ${code} to all recipients.`
-          : "Nothing to distribute.",
+          ? t("distributeSuccess", { amount: fromStroops(result.unwrap()), token: code })
+          : t("distributeFailed"),
       );
       await loadBalances(splitId);
     } catch (e) {
@@ -100,11 +102,11 @@ export default function EscrowCard({
 
   async function deposit() {
     if (!wallet) {
-      setMessage("Connect your wallet first.");
+      setMessage(t("connectWalletFirst"));
       return;
     }
     if (splitId === "" || !amount) {
-      setMessage("Pick a split and an amount.");
+      setMessage(t("pickSplitAndAmount"));
       return;
     }
     setBusy(true);
@@ -119,7 +121,9 @@ export default function EscrowCard({
       });
       const { result } = await tx.signAndSend();
       setMessage(
-        result.isOk() ? `Deposited ${amount} ${token.code}.` : "Deposit failed.",
+        result.isOk()
+          ? t("depositSuccess", { amount, token: token.code })
+          : t("depositFailed"),
       );
       await loadBalances(splitId);
     } catch (e) {
@@ -131,16 +135,16 @@ export default function EscrowCard({
 
   return (
     <section className="card">
-      <h2>Escrow</h2>
+      <h2>{t("escrowTitle")}</h2>
       <p className="hint">
-        Park funds in a split now, pay everyone out later.
+        {t("escrowDesc")}
       </p>
       <div className="row">
         <select value={splitId} onChange={(e) => setSplitId(e.target.value)}>
-          <option value="">Choose split</option>
+          <option value="">{t("chooseSplit")}</option>
           {splits.map((s) => (
             <option key={String(s.id)} value={String(s.id)}>
-              #{String(s.id)} · {s.recipients.length} recipients
+              #{String(s.id)} · {t("recipientsCount", { count: s.recipients.length })}
             </option>
           ))}
         </select>
@@ -152,17 +156,17 @@ export default function EscrowCard({
           {!loadError && balances.length === 0 && (
             <p className="hint">No pending balances.</p>
           )}
-          {balances.map((t) => (
-            <div className="row" key={t.contract}>
+          {balances.map((tk) => (
+            <div className="row" key={tk.contract}>
               <span className="hint">
-                Pending: {fromStroops(t.balance)} {t.code}
+                {t("pending", { amount: fromStroops(tk.balance), token: tk.code })}
               </span>
               <button
                 className="ghost"
-                disabled={distributing === t.contract}
-                onClick={() => distribute(t.contract, t.code)}
+                disabled={distributing === tk.contract}
+                onClick={() => distribute(tk.contract, tk.code)}
               >
-                {distributing === t.contract ? "Working…" : "Distribute"}
+                {distributing === tk.contract ? t("working") : t("distributeButton")}
               </button>
             </div>
           ))}
@@ -174,7 +178,7 @@ export default function EscrowCard({
           type="number"
           min="0"
           step="0.0000001"
-          placeholder="Amount"
+          placeholder={t("amount")}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
@@ -182,7 +186,7 @@ export default function EscrowCard({
       </div>
       <div className="row">
         <button disabled={busy} onClick={deposit}>
-          {busy ? "Working…" : "Deposit"}
+          {busy ? t("working") : t("depositButton")}
         </button>
       </div>
       {message && <p className="note">{message}</p>}

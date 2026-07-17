@@ -29,6 +29,8 @@ Environment variables, all optional:
 | `OUT` | `events.ndjson` | output file |
 | `STATE` | `state.json` | cursor file |
 | `POLL_MS` | `10000` | poll interval |
+| `BACKOFF_INITIAL_MS` | `1000` | initial delay after an RPC rate-limit response |
+| `BACKOFF_MAX_MS` | `60000` | maximum exponential backoff delay |
 
 ## Docker
 
@@ -69,6 +71,8 @@ By default, the Docker image is configured to write to `/app/data/events.ndjson`
 | `OUT` | `/app/data/events.ndjson` | Output events file path |
 | `STATE` | `/app/data/state.json` | Cursor state file path |
 | `POLL_MS` | `10000` | Polling interval in milliseconds |
+| `BACKOFF_INITIAL_MS` | `1000` | Initial rate-limit backoff delay in milliseconds |
+| `BACKOFF_MAX_MS` | `60000` | Maximum rate-limit backoff delay in milliseconds |
 
 ## CSV export
 
@@ -79,4 +83,3 @@ node export-csv.mjs > events.csv
 ```
 
 Note that public RPC only retains about a week of events. For a full history from genesis, run against your own RPC with extended retention, or start the indexer early and keep it running.
-
