@@ -11,17 +11,19 @@ export default function Activity({ items }: { items: ActivityItem[] }) {
     split_paid: t("activityPaid"),
     split_updated: t("activityUpdated"),
     deposited: t("activityDeposit"),
+    routed: t("activityRouted"),
     distributed: t("activityDistributed"),
     control_transferred: t("activityControlMoved"),
   };
 
   const exportCSV = () => {
-    const header = "eventId,type,id,amount,token,ledger,txHash";
+    const header = "eventId,type,id,childId,amount,token,ledger,txHash";
     const rows = items.map((item) => {
       const amount = item.amount !== undefined ? fromStroops(item.amount) : "";
       const token = item.token ?? "";
       const id = item.id !== undefined ? item.id.toString() : "";
-      return `${item.eventId},${item.type},${id},${amount},${token},${item.ledger},${item.txHash}`;
+      const childId = item.childId !== undefined ? item.childId.toString() : "";
+      return `${item.eventId},${item.type},${id},${childId},${amount},${token},${item.ledger},${item.txHash}`;
     });
     const csv = [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -56,6 +58,8 @@ export default function Activity({ items }: { items: ActivityItem[] }) {
               <span className="badge">{LABELS[item.type] ?? item.type}</span>
               <span>
                 {item.id !== undefined && ` ${t("activitySplitNum", { id: item.id.toString() })}`}
+                {item.childId !== undefined &&
+                  ` → ${t("activitySplitNum", { id: item.childId.toString() })}`}
                 {item.amount !== undefined &&
                   ` · ${fromStroops(item.amount)} ${tokenCode(item.token)}`}
               </span>

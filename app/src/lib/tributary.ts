@@ -106,6 +106,7 @@ export interface ActivityItem {
   eventId: string;
   type: string;
   id: bigint | undefined;
+  childId: bigint | undefined;
   amount: bigint | undefined;
   token: string | undefined;
   ledger: number;
@@ -150,11 +151,14 @@ export async function fetchActivity(limit = 12): Promise<ActivityItem[]> {
   for (const ev of events) {
     let type: unknown;
     let id: unknown;
+    let childId: unknown;
     let amount: bigint | undefined;
     let token: string | undefined;
     try {
       type = scValToNative(ev.topic[0]);
       id = ev.topic.length > 1 ? scValToNative(ev.topic[1]) : undefined;
+      childId =
+        ev.topic.length > 2 ? scValToNative(ev.topic[2]) : undefined;
       const data = scValToNative(ev.value);
       if (data && typeof data === "object" && "amount" in data) {
         amount = data.amount as bigint;
@@ -170,6 +174,7 @@ export async function fetchActivity(limit = 12): Promise<ActivityItem[]> {
       eventId: ev.id,
       type,
       id: typeof id === "bigint" ? id : undefined,
+      childId: typeof childId === "bigint" ? childId : undefined,
       amount,
       token,
       ledger: ev.ledger,

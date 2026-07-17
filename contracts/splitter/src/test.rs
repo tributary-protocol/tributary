@@ -58,6 +58,22 @@ fn expected_event(
     (contract.clone(), topics, data_val)
 }
 
+fn expected_routed_event(
+    env: &Env,
+    contract: &Address,
+    parent_id: u64,
+    child_id: u64,
+    data: &[(&str, soroban_sdk::Val)],
+) -> (
+    Address,
+    soroban_sdk::Vec<soroban_sdk::Val>,
+    soroban_sdk::Val,
+) {
+    let topics = (symbol(env, "routed"), parent_id, child_id).into_val(env);
+    let data_val = map_from_tuples(env, data);
+    (contract.clone(), topics, data_val)
+}
+
 #[test]
 fn create_and_get() {
     let s = setup();
@@ -1003,4 +1019,136 @@ fn immutable_split_cannot_be_updated() {
         .client
         .try_update_split(&id, &vec![&s.env, acct(&b)], &vec![&s.env, 10_000]);
     assert_eq!(result, Err(Ok(Error::SplitImmutable)));
+}
+
+#[test]
+fn deposit_emits_deposited_event() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, _) = fund_token(&s.env, &payer, 1_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    s.client.deposit(&payer, &id, &token_id, &400);
+
+    let events = s.env.events().all().filter_by_contract(&s.client.address);
+    assert_eq!(events.len(), 2);
+
+    let deposited_event = expected_event(
+        &s.env,
+        &s.client.address,
+        "deposited",
+        id,
+        &[
+            ("token", token_id.clone().into_val(&s.env)),
+            ("amount", 400i128.into_val(&s.env)),
+        ],
+    );
+    assert_eq!(events.get_unchecked(1), deposited_event);
+}
+
+#[test]
+fn pay_into_nested_split_emits_routed_event() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf_a = Address::generate(&s.env);
+    let leaf_b = Address::generate(&s.env);
+    let direct = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 10_000);
+
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf_a), acct(&leaf_b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&direct), Recipient::Split(child)],
+        &vec![&s.env, 6_000, 4_000],
+        &None,
+    );
+
+    s.client.pay(&payer, &parent, &token_id, &1_000);
+
+    let events = s.env.events().all().filter_by_contract(&s.client.address);
+
+    let expected_paid = expected_event(
+        &s.env,
+        &s.client.address,
+        "split_paid",
+        parent,
+        &[
+            ("token", token_id.clone().into_val(&s.env)),
+            ("amount", 1_000i128.into_val(&s.env)),
+        ],
+    );
+    let expected_routed = expected_routed_event(
+        &s.env,
+        &s.client.address,
+        parent,
+        child,
+        &[
+            ("token", token_id.clone().into_val(&s.env)),
+            ("amount", 400i128.into_val(&s.env)),
+        ],
+    );
+    assert_eq!(events.len(), 2);
+    assert_eq!(events.get_unchecked(0), expected_paid);
+    assert_eq!(events.get_unchecked(1), expected_routed);
+
+    assert_eq!(token_client.balance(&direct), 600);
+    assert_eq!(s.client.balance(&child, &token_id), 400);
+}
+
+#[test]
+fn deposit_and_pay_emit_distinct_events() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf_a = Address::generate(&s.env);
+    let leaf_b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 10_000);
+
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf_a), acct(&leaf_b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, Recipient::Split(child)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    s.client.deposit(&payer, &parent, &token_id, &500);
+    s.client.pay(&payer, &parent, &token_id, &500);
+
+    let events = s.env.events().all().filter_by_contract(&s.client.address);
+
+    let mut deposited_count = 0u32;
+    let mut routed_count = 0u32;
+    for i in 0..events.len() {
+        let event = events.get_unchecked(i);
+        let topics: soroban_sdk::Vec<soroban_sdk::Val> = event.1;
+        if topics.get_unchecked(0) == soroban_sdk::Symbol::new(&s.env, "deposited").into_val(&s.env) {
+            deposited_count += 1;
+        }
+        if topics.get_unchecked(0) == soroban_sdk::Symbol::new(&s.env, "routed").into_val(&s.env) {
+            routed_count += 1;
+        }
+    }
+
+    assert_eq!(deposited_count, 1);
+    assert_eq!(routed_count, 1);
 }

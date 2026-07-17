@@ -153,6 +153,24 @@ pub struct Distributed {
     pub amount: i128,
 }
 
+#[contractevent]
+#[derive(Clone)]
+pub struct Routed {
+    #[topic]
+    pub parent_id: u64,
+    #[topic]
+    pub child_id: u64,
+    pub token: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CreditSource {
+    Deposit,
+    Route { parent_id: u64 },
+}
+
 #[contract]
 pub struct Splitter;
 
@@ -209,7 +227,7 @@ impl Splitter {
             return Err(Error::InvalidAmount);
         }
         let split = load(&env, id)?;
-        payout(&env, &split, &from, &token, amount);
+        payout(&env, &split, &from, &token, amount, id);
         SplitPaid { id, token, amount }.publish(&env);
         Ok(())
     }
@@ -239,7 +257,7 @@ impl Splitter {
             let id = ids.get_unchecked(i);
             let amount = amounts.get_unchecked(i);
             let split = load(&env, id)?;
-            payout(&env, &split, &from, &token, amount);
+            payout(&env, &split, &from, &token, amount, id);
             SplitPaid {
                 id,
                 token: token.clone(),
@@ -277,7 +295,7 @@ impl Splitter {
             let amount = amounts.get_unchecked(i);
             let token = tokens.get_unchecked(i);
             let split = load(&env, id)?;
-            payout(&env, &split, &from, &token, amount);
+            payout(&env, &split, &from, &token, amount, id);
             SplitPaid {
                 id,
                 token: token.clone(),
@@ -364,7 +382,7 @@ impl Splitter {
         client.transfer(&from, &vault, &amount);
         let received = client.balance(&vault) - before;
         if received > 0 {
-            credit(&env, id, &token, received);
+            credit(&env, id, &token, received, &CreditSource::Deposit);
         }
         Ok(())
     }
@@ -407,6 +425,7 @@ impl Splitter {
             &env.current_contract_address(),
             &token,
             amount,
+            id,
         );
         Distributed { id, token, amount }.publish(&env);
         Ok(amount)
@@ -542,7 +561,14 @@ fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
     Ok(out)
 }
 
-fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i128) {
+fn payout(
+    env: &Env,
+    split: &Split,
+    from: &Address,
+    token: &Address,
+    amount: i128,
+    parent_id: u64,
+) {
     let client = token::Client::new(env, token);
     let vault = env.current_contract_address();
     let parts = amounts(env, split, amount).unwrap_or_else(|_| Vec::new(env));
@@ -557,13 +583,13 @@ fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i12
                 if from != &vault {
                     client.transfer(from, &vault, &part);
                 }
-                credit(env, child, token, part);
+                credit(env, child, token, part, &CreditSource::Route { parent_id });
             }
         }
     }
 }
 
-fn credit(env: &Env, id: u64, token: &Address, amount: i128) {
+fn credit(env: &Env, id: u64, token: &Address, amount: i128, source: &CreditSource) {
     let key = DataKey::Balance(id, token.clone());
     let held: i128 = env.storage().persistent().get(&key).unwrap_or(0);
     env.storage().persistent().set(&key, &(held + amount));
@@ -582,12 +608,25 @@ fn credit(env: &Env, id: u64, token: &Address, amount: i128) {
             .extend_ttl(&tokens_key, TTL_THRESHOLD, TTL_EXTEND_TO);
     }
 
-    Deposited {
-        id,
-        token: token.clone(),
-        amount,
+    match source {
+        CreditSource::Deposit => {
+            Deposited {
+                id,
+                token: token.clone(),
+                amount,
+            }
+            .publish(env);
+        }
+        CreditSource::Route { parent_id } => {
+            Routed {
+                parent_id: *parent_id,
+                child_id: id,
+                token: token.clone(),
+                amount,
+            }
+            .publish(env);
+        }
     }
-    .publish(env);
 }
 
 fn load(env: &Env, id: u64) -> Result<Split, Error> {
