@@ -28,20 +28,47 @@ const TTL_EXTEND_TO: u32 = 120 * DAY_LEDGERS;
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Error {
+    /// Code 1. The recipient list is empty.
+    /// Raised by `create_split`, `update_split` (via `validate`), and
+    /// `pay_many` (empty `ids` list).
     NoRecipients = 1,
+    /// Code 2. The `recipients` and `shares` vectors have different lengths.
+    /// Raised by `create_split`, `update_split` (via `validate`), and
+    /// `pay_many` (mismatched `ids`/`amounts`).
     LengthMismatch = 2,
+    /// Code 3. A share value is `0`.
+    /// Raised by `create_split` and `update_split` (via `validate`).
     ZeroShare = 3,
+    /// Code 4. Shares do not sum to `TOTAL_SHARES` (10_000), or the sum
+    /// overflows `u32`.
+    /// Raised by `create_split` and `update_split` (via `validate`).
     BadShareTotal = 4,
+    /// Code 5. The split `id` does not exist in storage.
+    /// Raised by `pay`, `pay_many`, `update_split`, `transfer_control`,
+    /// `distribute`, `preview_payout`, and `get_split` (all via `load`).
     SplitNotFound = 5,
+    /// Code 6. An edit was attempted on a split with `controller == None`.
+    /// Raised by `update_split` and `transfer_control`.
     SplitImmutable = 6,
+    /// Code 7. The payment amount is zero or negative.
+    /// Raised by `pay`, `pay_many`, `deposit`, and `preview_payout`.
     InvalidAmount = 7,
+    /// Code 8. `distribute` was called on a split/token with an empty
+    /// escrow balance.
+    /// Raised by `distribute`.
     NothingToDistribute = 8,
+    /// Code 9. More than `MAX_RECIPIENTS` (32) recipients were supplied.
+    /// Raised by `create_split` and `update_split` (via `validate`).
     TooManyRecipients = 9,
+    /// Code 10. A `Recipient::Split(child)` reference is unknown, or a split
+    /// references itself (directly or as its own update target).
+    /// Raised by `create_split` and `update_split` (via `validate`).
     BadChildSplit = 10,
     /// An arithmetic path produced a value that does not fit the i128 the
     /// contract stores. Can only happen if a share exceeds TOTAL_SHARES, which
     /// `validate` forbids, but we surface it as a typed error rather than panic.
     ArithmeticOverflow = 11,
+    SplitHasBalance = 12,
 }
 
 #[contracttype]
@@ -52,7 +79,7 @@ pub enum Recipient {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Split {
     pub recipients: Vec<Recipient>,
     pub shares: Vec<u32>,
@@ -89,6 +116,13 @@ pub struct SplitPaid {
 #[contractevent]
 #[derive(Clone)]
 pub struct SplitUpdated {
+    #[topic]
+    pub id: u64,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct SplitClosed {
     #[topic]
     pub id: u64,
 }
@@ -216,6 +250,44 @@ impl Splitter {
         Ok(())
     }
 
+    /// Pays several splits from one signer in a single transaction, each
+    /// with its own token. `ids`, `amounts`, and `tokens` pair up
+    /// positionally; any failure reverts all.
+    pub fn pay_many_multi(
+        env: Env,
+        from: Address,
+        ids: Vec<u64>,
+        amounts: Vec<i128>,
+        tokens: Vec<Address>,
+    ) -> Result<(), Error> {
+        from.require_auth();
+        if ids.is_empty() {
+            return Err(Error::NoRecipients);
+        }
+        if ids.len() != amounts.len() || ids.len() != tokens.len() {
+            return Err(Error::LengthMismatch);
+        }
+        for amount in amounts.iter() {
+            if amount <= 0 {
+                return Err(Error::InvalidAmount);
+            }
+        }
+        for i in 0..ids.len() {
+            let id = ids.get_unchecked(i);
+            let amount = amounts.get_unchecked(i);
+            let token = tokens.get_unchecked(i);
+            let split = load(&env, id)?;
+            payout(&env, &split, &from, &token, amount);
+            SplitPaid {
+                id,
+                token: token.clone(),
+                amount,
+            }
+            .publish(&env);
+        }
+        Ok(())
+    }
+
     /// Replaces the recipients and shares of a mutable split.
     pub fn update_split(
         env: Env,
@@ -250,9 +322,30 @@ impl Splitter {
         Ok(())
     }
 
+    /// Closes a split and reclaims its storage. Only the controller can do this,
+    /// and only if the split holds no balances.
+    pub fn close_split(env: Env, id: u64) -> Result<(), Error> {
+        let split = load(&env, id)?;
+        let controller = split.controller.ok_or(Error::SplitImmutable)?;
+        controller.require_auth();
+
+        let tokens = Self::held_tokens(env.clone(), id);
+        if !tokens.is_empty() {
+            return Err(Error::SplitHasBalance);
+        }
+
+        env.storage().persistent().remove(&DataKey::Split(id));
+        SplitClosed { id }.publish(&env);
+        Ok(())
+    }
+
     /// Moves funds into the contract and credits them to the split without
     /// paying anyone yet. Useful when money arrives before a distribution
     /// should happen.
+    ///
+    /// Credits the amount the vault's balance actually increased by rather
+    /// than the requested `amount`, so fee-on-transfer tokens that deliver
+    /// less than requested cannot over-credit the split.
     pub fn deposit(
         env: Env,
         from: Address,
@@ -266,8 +359,13 @@ impl Splitter {
         }
         load(&env, id)?;
         let vault = env.current_contract_address();
-        token::Client::new(&env, &token).transfer(&from, &vault, &amount);
-        credit(&env, id, &token, amount);
+        let client = token::Client::new(&env, &token);
+        let before = client.balance(&vault);
+        client.transfer(&from, &vault, &amount);
+        let received = client.balance(&vault) - before;
+        if received > 0 {
+            credit(&env, id, &token, received);
+        }
         Ok(())
     }
 
@@ -347,6 +445,36 @@ impl Splitter {
             .persistent()
             .get(&DataKey::Created(creator))
             .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    pub fn splits_of_paged(env: Env, creator: Address, start: u32, limit: u32) -> Vec<u64> {
+        let all: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Created(creator))
+            .unwrap_or_else(|| Vec::new(&env));
+        let len = all.len();
+        if start >= len || limit == 0 {
+            return Vec::new(&env);
+        }
+        let mut page = Vec::new(&env);
+        let mut i = start;
+        let mut count = 0u32;
+        while i < len && count < limit {
+            page.push_back(all.get_unchecked(i));
+            i += 1;
+            count += 1;
+        }
+        page
+    }
+
+    pub fn splits_of_count(env: Env, creator: Address) -> u32 {
+        let all: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Created(creator))
+            .unwrap_or_else(|| Vec::new(&env));
+        all.len()
     }
 
     pub fn split_count(env: Env) -> u64 {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { SplitView } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 import CreateSplit from "./CreateSplit";
 import PaySplit from "./PaySplit";
 import EscrowCard from "./EscrowCard";
@@ -18,6 +19,7 @@ export default function ActionPanel({
   splits: SplitView[];
   onChanged: () => void;
 }) {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("Create");
 
   const controlsSomething = splits.some((s) => s.controller === wallet);
@@ -27,16 +29,16 @@ export default function ActionPanel({
   return (
     <div className="panel">
       <div className="tabs" role="tablist">
-        {tabs.map((t) => (
+        {tabs.map((tabItem) => (
           <button
-            key={t}
+            key={tabItem}
             role="tab"
-            aria-selected={active === t}
-            className={active === t ? "tab active" : "tab"}
-            onClick={() => setTab(t)}
+            aria-selected={active === tabItem}
+            className={active === tabItem ? "tab active" : "tab"}
+            onClick={() => setTab(tabItem)}
           >
-            {t}
-            {active === t && (
+            {t("tab" + tabItem)}
+            {active === tabItem && (
               <motion.span
                 className="tab-line"
                 layoutId="tab-line"
