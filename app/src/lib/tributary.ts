@@ -201,3 +201,10 @@ export function fromStroops(stroops: bigint): string {
     maximumFractionDigits: 7,
   });
 }
+
+/** Format a decimal-string amount with locale-aware thousands separators. */
+export function formatAmount(units: string): string {
+  const num = parseFloat(units);
+  if (Number.isNaN(num)) return units;
+  return num.toLocaleString(undefined, { maximumFractionDigits: 7 });
+}
