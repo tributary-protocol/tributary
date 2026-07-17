@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { walletClient } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 import RecipientEditor, {
   Row,
   rowsError,
@@ -14,6 +15,7 @@ export default function CreateSplit({
   wallet: string | null;
   onCreated: () => void;
 }) {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<Row[]>([
     { kind: "address", value: "", percent: "60" },
     { kind: "address", value: "", percent: "40" },
@@ -41,10 +43,10 @@ export default function CreateSplit({
 
   async function submit() {
     if (!wallet) {
-      setMessage("Connect your wallet first.");
+      setMessage(t("connectWalletFirst"));
       return;
     }
-    const invalid = rowsError(rows);
+    const invalid = rowsError(rows, t);
     if (invalid) {
       setMessage(invalid);
       return;
@@ -62,8 +64,8 @@ export default function CreateSplit({
       const { result } = await tx.signAndSend();
       setMessage(
         result.isOk()
-          ? `Split #${result.unwrap()} created.`
-          : "Contract rejected the split.",
+          ? t("splitCreated", { id: result.unwrap().toString() })
+          : t("contractRejectedSplit"),
       );
       onCreated();
     } catch (e) {
@@ -75,7 +77,7 @@ export default function CreateSplit({
 
   return (
     <section className="card">
-      <h2>Create a split</h2>
+      <h2>{t("createTitle")}</h2>
       <div className="row templates">
         {templates.map(([label, percents]) => (
           <button
@@ -94,10 +96,13 @@ export default function CreateSplit({
           checked={editable}
           onChange={(e) => setEditable(e.target.checked)}
         />
-        I can edit this split later (uncheck to lock it forever)
+        {t("createEditableLabel")}
       </label>
+      <p className="hint" title="When a payment cannot be divided evenly, the tiny remainder (dust) goes to the last recipient so the full amount always lands somewhere.">
+        ⓘ Rounding dust goes to the last recipient.
+      </p>
       <button disabled={busy} onClick={submit}>
-        {busy ? "Waiting for signature…" : "Create split"}
+        {busy ? t("waitingForSignature") : t("createButton")}
       </button>
       {message && <p className="note">{message}</p>}
     </section>

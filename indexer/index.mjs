@@ -1,9 +1,34 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { rpc, scValToNative } from "@stellar/stellar-sdk";
 
-const RPC_URL = process.env.RPC_URL ?? "https://soroban-testnet.stellar.org";
-const CONTRACT_ID =
-  process.env.CONTRACT_ID ?? "CCZXVZUQIZT673QF6ZGLI5AJLEPWUFWVYOPIOJNLNIOO5NI27V4JGJUU";
+const DEFAULT_RPC_URL = "https://soroban-testnet.stellar.org";
+const DEFAULT_CONTRACT_ID =
+  "CCZXVZUQIZT673QF6ZGLI5AJLEPWUFWVYOPIOJNLNIOO5NI27V4JGJUU";
+
+function validateConfig(env = process.env) {
+  const errors = [];
+  const RPC_URL = (env.RPC_URL ?? DEFAULT_RPC_URL).trim();
+  const CONTRACT_ID = (env.CONTRACT_ID ?? DEFAULT_CONTRACT_ID).trim();
+
+  if (!RPC_URL) errors.push("RPC_URL is required");
+  if (!CONTRACT_ID) errors.push("CONTRACT_ID is required");
+
+  if (errors.length > 0) {
+    return { ok: false, error: `Invalid indexer configuration:\n- ${errors.join("\n- ")}` };
+  }
+
+  return { ok: true, value: { RPC_URL, CONTRACT_ID } };
+}
+
+export { validateConfig };
+
+const config = validateConfig();
+if (!config.ok) {
+  console.error(config.error);
+  process.exit(1);
+}
+
+const { RPC_URL, CONTRACT_ID } = config.value;
 const OUT = process.env.OUT ?? "events.ndjson";
 const STATE = process.env.STATE ?? "state.json";
 const POLL_MS = Number(process.env.POLL_MS ?? 10_000);
@@ -45,42 +70,72 @@ function cursorLedger(cursor) {
   return Number(BigInt(cursor.split("-")[0]) >> 32n);
 }
 
+let isPolling = false;
+let shutdownRequested = false;
+let intervalId;
+
+function handleShutdown(signal) {
+  console.log(`Received ${signal}. Shutting down gracefully...`);
+  shutdownRequested = true;
+  if (intervalId) {
+    clearInterval(intervalId);
+  }
+  if (!isPolling) {
+    console.log("State flushed. Exiting cleanly.");
+    process.exit(0);
+  }
+}
+
+process.on("SIGINT", () => handleShutdown("SIGINT"));
+process.on("SIGTERM", () => handleShutdown("SIGTERM"));
+
 // getEvents scans at most ~10k ledgers per call, so one poll pages the
 // cursor forward until it catches up with the chain head.
 async function poll() {
+  if (shutdownRequested) return;
+  isPolling = true;
   let cursor = loadCursor();
   const filters = [{ type: "contract", contractIds: [CONTRACT_ID] }];
   let total = 0;
 
-  for (;;) {
-    const request = cursor
-      ? { cursor, filters, limit: 100 }
-      : {
-          startLedger: Math.max(
-            1,
-            (await server.getLatestLedger()).sequence - 100_000,
-          ),
-          filters,
-          limit: 100,
-        };
+  try {
+    for (;;) {
+      if (shutdownRequested) break;
+      const request = cursor
+        ? { cursor, filters, limit: 100 }
+        : {
+            startLedger: Math.max(
+              1,
+              (await server.getLatestLedger()).sequence - 100_000,
+            ),
+            filters,
+            limit: 100,
+          };
 
-    const res = await server.getEvents(request);
-    for (const ev of res.events) {
-      appendFileSync(OUT, JSON.stringify(decode(ev)) + "\n");
+      const res = await server.getEvents(request);
+      for (const ev of res.events) {
+        appendFileSync(OUT, JSON.stringify(decode(ev)) + "\n");
+      }
+      total += res.events.length;
+
+      if (!res.cursor || res.cursor === cursor) break;
+      cursor = res.cursor;
+      saveCursor(cursor);
+      if (shutdownRequested) break;
+      if (res.events.length < 100 && cursorLedger(cursor) >= res.latestLedger) {
+        break;
+      }
     }
-    total += res.events.length;
-
-    if (!res.cursor || res.cursor === cursor) break;
-    cursor = res.cursor;
-    saveCursor(cursor);
-    if (res.events.length < 100 && cursorLedger(cursor) >= res.latestLedger) {
-      break;
+  } finally {
+    isPolling = false;
+    if (total > 0) console.log(`indexed ${total} events`);
+    if (shutdownRequested) {
+      console.log("State flushed. Exiting cleanly.");
+      process.exit(0);
     }
   }
-
-  if (total > 0) console.log(`indexed ${total} events`);
 }
 
 console.log(`indexing ${CONTRACT_ID} from ${RPC_URL} every ${POLL_MS}ms`);
 await poll();
-setInterval(() => poll().catch((e) => console.error(e.message ?? e)), POLL_MS);
+intervalId = setInterval(() => poll().catch((e) => console.error(e.message ?? e)), POLL_MS);
