@@ -120,22 +120,38 @@ export default function SplitList({
   splits,
   loading,
   mine,
+  filterIds,
 }: {
   splits: SplitView[];
   loading: boolean;
   mine: Set<string>;
+  filterIds?: Set<string>;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
+  const display = filterIds
+    ? splits.filter((s) => filterIds.has(String(s.id)))
+    : splits;
+
   if (loading) return <p className="note">{t("loadingSplits")}</p>;
-  if (splits.length === 0) {
+  if (display.length === 0 && !filterIds) {
     return (
       <div className="empty">
         <p>{t("noSplitsOnContract")}</p>
         <p className="note">
           {t("noSplitsPrompt")}
+        </p>
+      </div>
+    );
+  }
+  if (display.length === 0 && filterIds) {
+    return (
+      <div className="empty">
+        <p>{t("noIncomingSplits")}</p>
+        <p className="note">
+          {t("noIncomingSplitsDesc")}
         </p>
       </div>
     );
@@ -153,7 +169,7 @@ export default function SplitList({
   return (
     <section>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <h2>Recent splits</h2>
+        <h2>{filterIds ? t("incomingSplits") : t("recentSplits")}</h2>
         <input
           type="text"
           placeholder="Search by ID or address..."

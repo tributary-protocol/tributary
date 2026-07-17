@@ -94,6 +94,11 @@ export async function fetchMineIds(creator: string): Promise<Set<string>> {
   return new Set(result.map((id: bigint) => String(id)));
 }
 
+export async function fetchPayingIds(recipient: string): Promise<Set<string>> {
+  const { result } = await readClient().splits_paying({ recipient });
+  return new Set(result.map((id: bigint) => String(id)));
+}
+
 export async function previewPayout(
   id: bigint,
   amount: bigint,

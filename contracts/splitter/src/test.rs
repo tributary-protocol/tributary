@@ -833,7 +833,6 @@ fn immutable_split_cannot_be_updated() {
 fn every_error_code_maps_to_its_triggering_call() {
     let s = setup();
     let creator = Address::generate(&s.env);
-    let controller = Address::generate(&s.env);
     let a = Address::generate(&s.env);
     let b = Address::generate(&s.env);
     let payer = Address::generate(&s.env);
@@ -1123,6 +1122,9 @@ fn close_split_reclaims_storage() {
     let creator = Address::generate(&s.env);
     let controller = Address::generate(&s.env);
     let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let c = Address::generate(&s.env);
+
 
     let id = s.client.create_split(
         &creator,
@@ -1133,6 +1135,36 @@ fn close_split_reclaims_storage() {
 
     s.client.close_split(&id);
     assert_eq!(s.client.try_get_split(&id), Err(Ok(Error::SplitNotFound)));
+}
+
+#[test]
+fn update_split_adds_and_removes_paying_index() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let c = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &Some(controller.clone()),
+    );
+    assert_eq!(s.client.splits_paying(&a), vec![&s.env, id]);
+    assert_eq!(s.client.splits_paying(&b), vec![&s.env]);
+
+    // Replace a with b and c
+    s.client.update_split(
+        &id,
+        &vec![&s.env, acct(&b), acct(&c)],
+        &vec![&s.env, 5_000, 5_000],
+    );
+
+    assert_eq!(s.client.splits_paying(&a), vec![&s.env]);
+    assert_eq!(s.client.splits_paying(&b), vec![&s.env, id]);
+    assert_eq!(s.client.splits_paying(&c), vec![&s.env, id]);
 }
 
 #[test]
@@ -1348,6 +1380,7 @@ fn distribute_pays_out_the_fee_adjusted_balance() {
     let a = Address::generate(&s.env);
     let b = Address::generate(&s.env);
     let payer = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
 
     let id = s.client.create_split(
         &creator,
@@ -1455,4 +1488,123 @@ fn conservation_holds_across_random_splits() {
         }
         assert_eq!(received, amount, "conservation broken for random split");
     }
+}
+
+#[test]
+fn update_split_re_adding_recipient_reflected_correctly() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+        &Some(controller.clone()),
+    );
+    assert_eq!(s.client.splits_paying(&a), vec![&s.env, id]);
+
+    // Remove a
+    s.client.update_split(
+        &id,
+        &vec![&s.env, acct(&b)],
+        &vec![&s.env, 10_000],
+    );
+    assert_eq!(s.client.splits_paying(&a), vec![&s.env]);
+
+    // Re-add a
+    s.client.update_split(
+        &id,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+    );
+    assert_eq!(s.client.splits_paying(&a), vec![&s.env, id]);
+}
+
+#[test]
+fn splits_paying_paged_and_count() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    for _ in 0..5 {
+        s.client.create_split(
+            &creator,
+            &vec![&s.env, acct(&a)],
+            &vec![&s.env, 10_000],
+            &None,
+        );
+    }
+
+    assert_eq!(s.client.splits_paying_count(&a), 5);
+    assert_eq!(
+        s.client.splits_paying_paged(&a, &0, &2),
+        vec![&s.env, 0, 1]
+    );
+    assert_eq!(
+        s.client.splits_paying_paged(&a, &2, &2),
+        vec![&s.env, 2, 3]
+    );
+    assert_eq!(s.client.splits_paying_paged(&a, &4, &2), vec![&s.env, 4]);
+    assert_eq!(s.client.splits_paying_paged(&a, &5, &2), vec![&s.env]);
+    assert_eq!(s.client.splits_paying_paged(&a, &0, &0), vec![&s.env]);
+    assert_eq!(
+        s.client.splits_paying_paged(&a, &0, &5),
+        vec![&s.env, 0, 1, 2, 3, 4]
+    );
+
+    let stranger = Address::generate(&s.env);
+    assert_eq!(s.client.splits_paying_count(&stranger), 0);
+    assert_eq!(s.client.splits_paying_paged(&stranger, &0, &10), vec![&s.env]);
+}
+
+#[test]
+fn splits_paying_handles_nested_split_recipient() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let leaf = Address::generate(&s.env);
+
+    // Child split: controller receives funds
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf)],
+        &vec![&s.env, 10_000],
+        &Some(controller.clone()),
+    );
+
+    // Parent split references child
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), Recipient::Split(child)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    // Controller should see the parent split paying them (child receives via its controller)
+    assert_eq!(s.client.splits_paying(&controller), vec![&s.env, parent]);
+    // Regular recipient a should see the parent split
+    assert_eq!(s.client.splits_paying(&a), vec![&s.env, parent]);
+}
+
+#[test]
+fn close_split_removes_paying_index() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &Some(controller.clone()),
+    );
+    assert_eq!(s.client.splits_paying(&a), vec![&s.env, id]);
+
+    s.client.close_split(&id);
+    assert_eq!(s.client.splits_paying(&a), vec![&s.env]);
 }

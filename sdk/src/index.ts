@@ -179,6 +179,23 @@ export interface Client {
    * Construct and simulate a pending_controller transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   pending_controller: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Option<string>>>
+
+  /**
+   * Construct and simulate a splits_paying transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation.
+   * Returns all split ids that route payments to the given recipient.
+   */
+  splits_paying: ({recipient}: {recipient: string}, options?: MethodOptions) => Promise<AssembledTransaction<Array<u64>>>
+
+  /**
+   * Construct and simulate a splits_paying_paged transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation.
+   */
+  splits_paying_paged: ({recipient, start, limit}: {recipient: string, start: u32, limit: u32}, options?: MethodOptions) => Promise<AssembledTransaction<Array<u64>>>
+
+  /**
+   * Construct and simulate a splits_paying_count transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation.
+   */
+  splits_paying_count: ({recipient}: {recipient: string}, options?: MethodOptions) => Promise<AssembledTransaction<u32>>
+
 }
 export class Client extends ContractClient {
   static async deploy<T = Client>(
@@ -245,7 +262,10 @@ export class Client extends ContractClient {
         preview_payout: this.txFromJSON<Result<Array<i128>>>,
         cancel_transfer: this.txFromJSON<Result<void>>,
         transfer_control: this.txFromJSON<Result<void>>,
-        pending_controller: this.txFromJSON<Option<string>>
+        pending_controller: this.txFromJSON<Option<string>>,
+        splits_paying: this.txFromJSON<Array<u64>>,
+        splits_paying_paged: this.txFromJSON<Array<u64>>,
+        splits_paying_count: this.txFromJSON<u32>
   }
 }
 

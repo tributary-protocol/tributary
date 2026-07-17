@@ -4,6 +4,7 @@ import {
   connectWallet,
   fetchSplits,
   fetchMineIds,
+  fetchPayingIds,
   fetchActivity,
   shortAddress,
   ActivityItem,
@@ -29,22 +30,27 @@ export default function App() {
   const [wallet, setWallet] = useState<string | null>(null);
   const [splits, setSplits] = useState<SplitView[]>([]);
   const [mine, setMine] = useState<Set<string>>(new Set());
+  const [paying, setPaying] = useState<Set<string>>(new Set());
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [nextSplits, nextActivity, nextMine] = await Promise.all([
+      const [nextSplits, nextActivity, nextMine, nextPaying] = await Promise.all([
         fetchSplits(),
         fetchActivity().catch(() => [] as ActivityItem[]),
         wallet
           ? fetchMineIds(wallet).catch(() => new Set<string>())
           : Promise.resolve(new Set<string>()),
+        wallet
+          ? fetchPayingIds(wallet).catch(() => new Set<string>())
+          : Promise.resolve(new Set<string>()),
       ]);
       setSplits(nextSplits);
       setActivity(nextActivity);
       setMine(nextMine);
+      setPaying(nextPaying);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -129,6 +135,20 @@ export default function App() {
         >
           <SplitList splits={splits} loading={loading} mine={mine} />
         </motion.div>
+
+        {wallet && (
+          <motion.div
+            {...rise}
+            transition={{ duration: 0.5, ease: "easeOut", delay: 0.24 }}
+          >
+            <SplitList
+              splits={splits}
+              loading={loading}
+              mine={mine}
+              filterIds={paying}
+            />
+          </motion.div>
+        )}
 
         <Activity items={activity} />
       </main>
