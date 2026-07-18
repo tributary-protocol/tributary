@@ -31,6 +31,8 @@ Create a mutable split with your multisig as controller and each member as a rec
 
 Make the referrer share its own split: the marketplace split routes 2% to `Split(referrerPool)`, and the pool split divides that among active referrers. Updating the referrer roster never touches the marketplace split.
 
+For a complete step-by-step walkthrough — including previewing payouts, updating the roster, and distributing across multiple sales — see [tutorial-referrer-pool.md](./tutorial-referrer-pool.md).
+
 ### Distributing a two-level tree
 
 Nested splits are settled one level per call. A distribution pays account

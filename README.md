@@ -7,6 +7,8 @@
 
 Payment splitting on Stellar. Live at [tributary-omega.vercel.app](https://tributary-omega.vercel.app).
 
+![Tributary dashboard showing the Create tab with recipient inputs and the split list below](assets/dashboard.svg)
+
 A split is a routing rule stored on-chain: a list of recipient addresses and the share each one gets. Once a split exists, anyone can push a payment through it and every recipient gets paid in the same transaction.
 
 Things you can do with one transfer:
@@ -103,6 +105,8 @@ app                  web dashboard (Vite + React, Freighter wallet)
 [docs/preview-payout.md](docs/preview-payout.md) shows how to preview a payout with `preview_payout` before paying.
 
 [docs/integrations.md](docs/integrations.md#distributing-a-two-level-tree) includes an end-to-end nested split example and shows the multi-call distribution order.
+
+[docs/tutorial-referrer-pool.md](docs/tutorial-referrer-pool.md) walks through building a marketplace referrer pool with nested splits end to end.
 
 ## Contributing
 
