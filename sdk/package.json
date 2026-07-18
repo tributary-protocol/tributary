@@ -9,24 +9,34 @@
     "directory": "sdk"
   },
   "homepage": "https://tributary-omega.vercel.app",
-  "keywords": ["stellar", "soroban", "payments", "splits"],
+  "keywords": [
+    "stellar",
+    "soroban",
+    "payments",
+    "splits"
+  ],
   "type": "module",
   "exports": "./dist/index.js",
   "typings": "dist/index.d.ts",
-  "files": ["dist", "src", "README.md"],
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build",
-    "test": "npm run build && node --test test.js"
+    "test": "npm run build && node --test dist/*.test.js",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^16.0.1",
     "buffer": "6.0.3"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "typescript": "^7.0.2"
   }
 }
