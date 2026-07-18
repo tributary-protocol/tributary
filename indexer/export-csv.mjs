@@ -2,7 +2,7 @@ import { createInterface } from "node:readline";
 import { createReadStream, existsSync } from "node:fs";
 
 const IN = process.argv[2] ?? "events.ndjson";
-const COLUMNS = ["at", "ledger", "type", "split", "amount", "token", "creator", "txHash"];
+const COLUMNS = ["at", "ledger", "type", "split", "amount", "token", "reference", "creator", "txHash"];
 
 if (!existsSync(IN)) {
   console.error(`${IN} not found. Run the indexer first.`);

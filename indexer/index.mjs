@@ -47,6 +47,15 @@ function saveCursor(cursor) {
   writeFileSync(STATE, JSON.stringify({ cursor }));
 }
 
+// Coerces a decoded event value into something JSON can round-trip. bigints
+// become strings; byte arrays (e.g. a BytesN<32> payment reference) become
+// hex so they survive JSON.stringify instead of turning into {"0":..,"1":..}.
+function normalizeValue(value) {
+  if (typeof value === "bigint") return String(value);
+  if (value instanceof Uint8Array) return Buffer.from(value).toString("hex");
+  return value;
+}
+
 function decode(ev) {
   const record = {
     ledger: ev.ledger,
@@ -60,7 +69,7 @@ function decode(ev) {
     const data = scValToNative(ev.value);
     if (data && typeof data === "object") {
       for (const [key, value] of Object.entries(data)) {
-        record[key] = typeof value === "bigint" ? String(value) : value;
+        record[key] = normalizeValue(value);
       }
     }
   } catch {
