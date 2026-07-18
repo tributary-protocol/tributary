@@ -8,7 +8,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contractmeta, contracttype, token,
-    Address, Env, Vec, I256,
+    Address, BytesN, Env, Vec, I256,
 };
 
 contractmeta!(key = "name", val = "tributary-splitter");
@@ -111,6 +111,10 @@ pub struct SplitPaid {
     pub id: u64,
     pub token: Address,
     pub amount: i128,
+    /// Optional caller-supplied tag (e.g. an order or invoice id) so
+    /// integrators can reconcile a payment against their own records.
+    /// Not a topic: it rides along as data and never costs a topic slot.
+    pub reference: Option<BytesN<32>>,
 }
 
 #[contractevent]
@@ -203,6 +207,7 @@ impl Splitter {
         id: u64,
         token: Address,
         amount: i128,
+        reference: Option<BytesN<32>>,
     ) -> Result<(), Error> {
         from.require_auth();
         if amount <= 0 {
@@ -210,24 +215,38 @@ impl Splitter {
         }
         let split = load(&env, id)?;
         payout(&env, &split, &from, &token, amount);
-        SplitPaid { id, token, amount }.publish(&env);
+        SplitPaid {
+            id,
+            token,
+            amount,
+            reference,
+        }
+        .publish(&env);
         Ok(())
     }
 
     /// Pays several splits from one signer in a single transaction.
     /// `ids` and `amounts` pair up positionally; any failure reverts all.
+    ///
+    /// `references` optionally tags each split's payment for reconciliation
+    /// and pairs up positionally too. An empty `references` vec means "no
+    /// reference for any split"; otherwise it must match `ids.len()` exactly.
     pub fn pay_many(
         env: Env,
         from: Address,
         ids: Vec<u64>,
         amounts: Vec<i128>,
         token: Address,
+        references: Vec<Option<BytesN<32>>>,
     ) -> Result<(), Error> {
         from.require_auth();
         if ids.is_empty() {
             return Err(Error::NoRecipients);
         }
         if ids.len() != amounts.len() {
+            return Err(Error::LengthMismatch);
+        }
+        if !references.is_empty() && references.len() != ids.len() {
             return Err(Error::LengthMismatch);
         }
         for amount in amounts.iter() {
@@ -244,6 +263,7 @@ impl Splitter {
                 id,
                 token: token.clone(),
                 amount,
+                reference: reference_at(&references, i),
             }
             .publish(&env);
         }
@@ -253,18 +273,26 @@ impl Splitter {
     /// Pays several splits from one signer in a single transaction, each
     /// with its own token. `ids`, `amounts`, and `tokens` pair up
     /// positionally; any failure reverts all.
+    ///
+    /// `references` optionally tags each split's payment for reconciliation
+    /// and pairs up positionally too. An empty `references` vec means "no
+    /// reference for any split"; otherwise it must match `ids.len()` exactly.
     pub fn pay_many_multi(
         env: Env,
         from: Address,
         ids: Vec<u64>,
         amounts: Vec<i128>,
         tokens: Vec<Address>,
+        references: Vec<Option<BytesN<32>>>,
     ) -> Result<(), Error> {
         from.require_auth();
         if ids.is_empty() {
             return Err(Error::NoRecipients);
         }
         if ids.len() != amounts.len() || ids.len() != tokens.len() {
+            return Err(Error::LengthMismatch);
+        }
+        if !references.is_empty() && references.len() != ids.len() {
             return Err(Error::LengthMismatch);
         }
         for amount in amounts.iter() {
@@ -282,6 +310,7 @@ impl Splitter {
                 id,
                 token: token.clone(),
                 amount,
+                reference: reference_at(&references, i),
             }
             .publish(&env);
         }
@@ -479,6 +508,18 @@ impl Splitter {
 
     pub fn split_count(env: Env) -> u64 {
         env.storage().instance().get(&DataKey::Count).unwrap_or(0)
+    }
+}
+
+/// Picks the reference for the split at index `i` in a batch. An empty
+/// `references` vec means "no reference for any split", so every index
+/// resolves to `None` without a bounds check. Callers guarantee a non-empty
+/// vec matches the batch length, so `get_unchecked` is safe.
+fn reference_at(references: &Vec<Option<BytesN<32>>>, i: u32) -> Option<BytesN<32>> {
+    if references.is_empty() {
+        None
+    } else {
+        references.get_unchecked(i)
     }
 }
 
