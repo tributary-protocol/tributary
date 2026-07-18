@@ -84,6 +84,9 @@ const translations = {
     nestedSplit: "split #{id}",
     detailEscrow: "escrow",
     detailController: "controller: {controller}",
+    detailHistoryTitle: "Payment & Distribution History",
+    detailHistoryEmpty: "No payments or distributions yet.",
+    detailHistoryLoading: "Loading history…",
     // Activity
     recentActivity: "Recent activity",
     exportCsv: "Export CSV",
@@ -179,6 +182,9 @@ const translations = {
     nestedSplit: "danh sách chia #{id}",
     detailEscrow: "ký quỹ",
     detailController: "bộ điều khiển: {controller}",
+    detailHistoryTitle: "Lịch sử thanh toán & phân phối",
+    detailHistoryEmpty: "Chưa có thanh toán hoặc phân phối nào.",
+    detailHistoryLoading: "Đang tải lịch sử…",
     // Activity
     recentActivity: "Hoạt động gần đây",
     exportCsv: "Xuất CSV",
