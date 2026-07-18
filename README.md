@@ -35,7 +35,7 @@ Per-recipient amounts are rounded down and the leftover dust goes to the last re
 
 ## Contract API
 
-The table below summarises each call; see [docs/api-reference.md](docs/api-reference.md) for the full per-function reference with parameters, return types, errors, events and auth.
+The table below summarizes each call; see [docs/api-reference.md](docs/api-reference.md) for the full per-function reference with parameters, return types, errors, events and auth.
 
 | Function | Description |
 | --- | --- |
@@ -101,6 +101,8 @@ app                  web dashboard (Vite + React, Freighter wallet)
 [docs/glossary.md](docs/glossary.md) defines core terms like split, share, controller, escrow and dust.
 
 [docs/preview-payout.md](docs/preview-payout.md) shows how to preview a payout with `preview_payout` before paying.
+
+[docs/integrations.md](docs/integrations.md#distributing-a-two-level-tree) includes an end-to-end nested split example and shows the multi-call distribution order.
 
 ## Contributing
 
