@@ -11,9 +11,11 @@ import {
   CONTRACT_ID,
   EXPLORER,
 } from "./lib/tributary";
+import { useTranslation } from "./lib/i18n";
 import ActionPanel from "./components/ActionPanel";
 import SplitList from "./components/SplitList";
 import Activity from "./components/Activity";
+import LanguageSwitcher from "./components/LanguageSwitcher";
 
 const REFRESH_MS = 30_000;
 
@@ -23,6 +25,7 @@ const rise = {
 };
 
 export default function App() {
+  const { t } = useTranslation();
   const [wallet, setWallet] = useState<string | null>(null);
   const [splits, setSplits] = useState<SplitView[]>([]);
   const [mine, setMine] = useState<Set<string>>(new Set());
@@ -80,15 +83,16 @@ export default function App() {
         <div className="brand">
           <img src="/logo.svg" alt="" width="34" height="34" />
           <span>Tributary</span>
-          <span className="badge net">Testnet</span>
+          <span className="badge net">{t("testnet")}</span>
         </div>
         <nav>
-          <a href="https://github.com/tributary-protocol/tributary">GitHub</a>
+          <LanguageSwitcher />
+          <a href="https://github.com/tributary-protocol/tributary">{t("github")}</a>
           {wallet ? (
             <span className="wallet">{shortAddress(wallet)}</span>
           ) : (
             <motion.button whileTap={{ scale: 0.97 }} onClick={onConnect}>
-              Connect Freighter
+              {t("connectWallet")}
             </motion.button>
           )}
         </nav>
@@ -100,10 +104,9 @@ export default function App() {
           {...rise}
           transition={{ duration: 0.5, ease: "easeOut" }}
         >
-          <h1>Split payments on Stellar</h1>
+          <h1>{t("introTitle")}</h1>
           <p>
-            One transaction in, every recipient paid by their share. Running on
-            testnet.
+            {t("introDesc")}
           </p>
         </motion.section>
 
@@ -132,7 +135,7 @@ export default function App() {
 
       <footer>
         <span>Apache-2.0</span>
-        <a href={`${EXPLORER}/contract/${CONTRACT_ID}`}>Contract on testnet</a>
+        <a href={`${EXPLORER}/contract/${CONTRACT_ID}`}>{t("contractOnTestnet")}</a>
         <a href="https://github.com/tributary-protocol/tributary">
           tributary-protocol/tributary
         </a>

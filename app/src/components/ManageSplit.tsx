@@ -1,10 +1,6 @@
 import { useState } from "react";
-import {
-  walletClient,
-  SplitView,
-  Recipient,
-  shortAddress,
-} from "../lib/tributary";
+import { walletClient, SplitView, Recipient } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 import RecipientEditor, {
   Row,
   rowsError,
@@ -29,6 +25,7 @@ export default function ManageSplit({
   splits: SplitView[];
   onChanged: () => void;
 }) {
+  const { t } = useTranslation();
   const [splitId, setSplitId] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [transferTo, setTransferTo] = useState("");
@@ -71,8 +68,7 @@ export default function ManageSplit({
   }
 
   async function update() {
-    setConfirmLock(false);
-    const invalid = rowsError(rows);
+    const invalid = rowsError(rows, t);
     if (invalid) {
       setMessage(invalid);
       return;
@@ -84,15 +80,13 @@ export default function ManageSplit({
         shares: toShares(rows),
       });
       const { result } = await tx.signAndSend();
-      return result.isOk() ? "Split updated." : "Update rejected.";
+      return result.isOk() ? t("updateSuccess") : t("updateFailed");
     });
   }
 
   async function transfer() {
-    setConfirmLock(false);
-    const to = transferTo.trim();
-    if (!/^G[A-Z2-7]{55}$/.test(to)) {
-      setMessage("Controller must be a G… account key.");
+    if (!/^G[A-Z2-7]{55}$/.test(transferTo.trim())) {
+      setMessage(t("controllerFormatError"));
       return;
     }
     if (to === wallet) {
@@ -106,36 +100,36 @@ export default function ManageSplit({
         new_controller: to,
       });
       const { result } = await tx.signAndSend();
-      if (!result.isOk()) return "Transfer rejected.";
-      clearSelection();
-      return `Control of split #${id} handed to ${shortAddress(to)}.`;
+      return result.isOk() ? t("transferSuccess") : t("transferFailed");
     });
   }
 
   async function lock() {
-    const id = splitId;
+    if (!confirmLock) {
+      setConfirmLock(true);
+      setMessage(t("lockConfirmPrompt"));
+      return;
+    }
     await run(async () => {
       const tx = await walletClient(wallet!).transfer_control({
         id: BigInt(id),
         new_controller: undefined,
       });
       const { result } = await tx.signAndSend();
-      if (!result.isOk()) return "Lock rejected.";
-      clearSelection();
-      return `Split #${id} is locked. Its recipients can never change again.`;
+      return result.isOk() ? t("lockSuccess") : t("lockFailed");
     });
     setConfirmLock(false);
   }
 
   return (
     <section className="card">
-      <h2>Manage your splits</h2>
+      <h2>{t("manageTitle")}</h2>
       <div className="row">
         <select value={splitId} onChange={(e) => select(e.target.value)}>
-          <option value="">Choose split you control</option>
+          <option value="">{t("chooseSplitControl")}</option>
           {mine.map((s) => (
             <option key={String(s.id)} value={String(s.id)}>
-              #{String(s.id)} · {s.recipients.length} recipients
+              #{String(s.id)} · {t("recipientsCount", { count: s.recipients.length })}
             </option>
           ))}
         </select>
@@ -145,32 +139,21 @@ export default function ManageSplit({
           <RecipientEditor rows={rows} onChange={setRows} />
           <div className="row">
             <button disabled={busy} onClick={update}>
-              Update split
+              {t("updateButton")}
             </button>
           </div>
           <div className="row">
             <input
-              placeholder="G… new controller"
+              placeholder={t("placeholderController")}
               value={transferTo}
               onChange={(e) => setTransferTo(e.target.value)}
               disabled={confirmLock}
             />
-            <button
-              className="ghost"
-              disabled={busy || confirmLock}
-              onClick={transfer}
-            >
-              Transfer
+            <button className="ghost" disabled={busy} onClick={transfer}>
+              {t("transferButton")}
             </button>
-            <button
-              className="ghost"
-              disabled={busy || confirmLock}
-              onClick={() => {
-                setConfirmLock(true);
-                setMessage(null);
-              }}
-            >
-              Lock forever
+            <button className="ghost" disabled={busy} onClick={lock}>
+              {confirmLock ? t("confirmLockButton") : t("lockButton")}
             </button>
           </div>
           {confirmLock && (

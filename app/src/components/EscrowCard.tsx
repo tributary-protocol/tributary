@@ -7,6 +7,7 @@ import {
   TOKENS,
   SplitView,
 } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 import TokenPicker from "./TokenPicker";
 
 export default function EscrowCard({
@@ -16,6 +17,7 @@ export default function EscrowCard({
   wallet: string | null;
   splits: SplitView[];
 }) {
+  const { t } = useTranslation();
   const [splitId, setSplitId] = useState("");
   const [amount, setAmount] = useState("");
   const [token, setToken] = useState(TOKENS[0]);
@@ -45,11 +47,11 @@ export default function EscrowCard({
 
   async function distribute() {
     if (!wallet) {
-      setMessage("Connect your wallet first.");
+      setMessage(t("connectWalletFirst"));
       return;
     }
     if (splitId === "") {
-      setMessage("Pick a split.");
+      setMessage(t("pickSplit"));
       return;
     }
     setBusy(true);
@@ -63,8 +65,8 @@ export default function EscrowCard({
       const { result } = await tx.signAndSend();
       setMessage(
         result.isOk()
-          ? `Distributed ${fromStroops(result.unwrap())} ${token.code} to all recipients.`
-          : "Nothing to distribute.",
+          ? t("distributeSuccess", { amount: fromStroops(result.unwrap()), token: token.code })
+          : t("distributeFailed"),
       );
       await loadPending(splitId);
     } catch (e) {
@@ -76,11 +78,11 @@ export default function EscrowCard({
 
   async function deposit() {
     if (!wallet) {
-      setMessage("Connect your wallet first.");
+      setMessage(t("connectWalletFirst"));
       return;
     }
     if (splitId === "" || !amount) {
-      setMessage("Pick a split and an amount.");
+      setMessage(t("pickSplitAndAmount"));
       return;
     }
     setBusy(true);
@@ -95,7 +97,9 @@ export default function EscrowCard({
       });
       const { result } = await tx.signAndSend();
       setMessage(
-        result.isOk() ? `Deposited ${amount} ${token.code}.` : "Deposit failed.",
+        result.isOk()
+          ? t("depositSuccess", { amount, token: token.code })
+          : t("depositFailed"),
       );
       await loadPending(splitId);
     } catch (e) {
@@ -107,23 +111,23 @@ export default function EscrowCard({
 
   return (
     <section className="card">
-      <h2>Escrow</h2>
+      <h2>{t("escrowTitle")}</h2>
       <p className="hint">
-        Park funds in a split now, pay everyone out later.
+        {t("escrowDesc")}
       </p>
       <div className="row">
         <select value={splitId} onChange={(e) => setSplitId(e.target.value)}>
-          <option value="">Choose split</option>
+          <option value="">{t("chooseSplit")}</option>
           {splits.map((s) => (
             <option key={String(s.id)} value={String(s.id)}>
-              #{String(s.id)} · {s.recipients.length} recipients
+              #{String(s.id)} · {t("recipientsCount", { count: s.recipients.length })}
             </option>
           ))}
         </select>
       </div>
       {pending !== null && (
         <p className="hint">
-          Pending: {fromStroops(pending)} {token.code}
+          {t("pending", { amount: fromStroops(pending), token: token.code })}
         </p>
       )}
       <div className="row">
@@ -131,7 +135,7 @@ export default function EscrowCard({
           type="number"
           min="0"
           step="0.0000001"
-          placeholder="Amount"
+          placeholder={t("amount")}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
@@ -139,14 +143,14 @@ export default function EscrowCard({
       </div>
       <div className="row">
         <button disabled={busy} onClick={deposit}>
-          {busy ? "Working…" : "Deposit"}
+          {busy ? t("working") : t("depositButton")}
         </button>
         <button
           className="ghost"
           disabled={busy || !pending}
           onClick={distribute}
         >
-          Distribute
+          {t("distributeButton")}
         </button>
       </div>
       {message && <p className="note">{message}</p>}
