@@ -10,19 +10,22 @@ export function rowsTotal(rows: Row[]): number {
   return rows.reduce((sum, r) => sum + (parseFloat(r.percent) || 0), 0);
 }
 
-export function rowsError(rows: Row[]): string | null {
+export function rowsError(
+  rows: Row[],
+  t?: (key: string, variables?: Record<string, string | number>) => string,
+): string | null {
   if (Math.abs(rowsTotal(rows) - 100) > 0.001) {
-    return "Shares must add up to 100%.";
+    return t ? t("shareTotalError") : "Shares must add up to 100%.";
   }
   if (rows.some((r) => r.value.trim() === "")) {
-    return "Every recipient needs an address or split id.";
+    return t ? t("emptyRecipientError") : "Every recipient needs an address or split id.";
   }
   if (
     rows.some(
       (r) => r.kind === "address" && !/^G[A-Z2-7]{55}$/.test(r.value.trim()),
     )
   ) {
-    return "Recipient addresses must be G… account keys.";
+    return t ? t("invalidAddressError") : "Recipient addresses must be G… account keys.";
   }
   return null;
 }

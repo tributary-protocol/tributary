@@ -1,0 +1,10 @@
+[package]
+name = "spec-extractor"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde_json = "1"
+soroban-spec = "26.1.0"
+stellar-xdr = "26.0.1"

@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::missing_errors_doc, clippy::needless_pass_by_value)]
 //! Splits incoming payments between recipients by fixed basis-point shares.
 //!
 //! A split routes to accounts or to other splits. Payments either go straight
@@ -28,20 +29,49 @@ const TTL_EXTEND_TO: u32 = 120 * DAY_LEDGERS;
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Error {
+    /// Code 1. The recipient list is empty.
+    /// Raised by `create_split`, `update_split` (via `validate`), and
+    /// `pay_many` (empty `ids` list).
     NoRecipients = 1,
+    /// Code 2. The `recipients` and `shares` vectors have different lengths.
+    /// Raised by `create_split`, `update_split` (via `validate`), and
+    /// `pay_many` (mismatched `ids`/`amounts`).
     LengthMismatch = 2,
+    /// Code 3. A share value is `0`.
+    /// Raised by `create_split` and `update_split` (via `validate`).
     ZeroShare = 3,
+    /// Code 4. Shares do not sum to `TOTAL_SHARES` (`10_000`), or the sum
+    /// overflows `u32`.
+    /// Raised by `create_split` and `update_split` (via `validate`).
     BadShareTotal = 4,
+    /// Code 5. The split `id` does not exist in storage.
+    /// Raised by `pay`, `pay_many`, `update_split`, `transfer_control`,
+    /// `distribute`, `preview_payout`, and `get_split` (all via `load`).
     SplitNotFound = 5,
+    /// Code 6. An edit was attempted on a split with `controller == None`.
+    /// Raised by `update_split` and `transfer_control`.
     SplitImmutable = 6,
+    /// Code 7. The payment amount is zero or negative.
+    /// Raised by `pay`, `pay_many`, `deposit`, and `preview_payout`.
     InvalidAmount = 7,
+    /// Code 8. `distribute` was called on a split/token with an empty
+    /// escrow balance.
+    /// Raised by `distribute`.
     NothingToDistribute = 8,
+    /// Code 9. More than `MAX_RECIPIENTS` (32) recipients were supplied.
+    /// Raised by `create_split` and `update_split` (via `validate`).
     TooManyRecipients = 9,
+    /// Code 10. A `Recipient::Split(child)` reference is unknown, or a split
+    /// references itself (directly or as its own update target).
+    /// Raised by `create_split` and `update_split` (via `validate`).
     BadChildSplit = 10,
     /// An arithmetic path produced a value that does not fit the i128 the
-    /// contract stores. Can only happen if a share exceeds TOTAL_SHARES, which
+    /// contract stores. Can only happen if a share exceeds `TOTAL_SHARES`, which
     /// `validate` forbids, but we surface it as a typed error rather than panic.
     ArithmeticOverflow = 11,
+    SplitHasBalance = 12,
+    /// Calling `accept_control` on a split that has no pending transfer.
+    NoPendingTransfer = 13,
 }
 
 #[contracttype]
@@ -52,7 +82,7 @@ pub enum Recipient {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Split {
     pub recipients: Vec<Recipient>,
     pub shares: Vec<u32>,
@@ -67,6 +97,7 @@ enum DataKey {
     Balance(u64, Address),
     Created(Address),
     HeldTokens(u64),
+    PendingController(u64),
 }
 
 #[contractevent]
@@ -91,6 +122,21 @@ pub struct SplitPaid {
 pub struct SplitUpdated {
     #[topic]
     pub id: u64,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct SplitClosed {
+    #[topic]
+    pub id: u64,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct ControlTransferProposed {
+    #[topic]
+    pub id: u64,
+    pub new_controller: Address,
 }
 
 #[contractevent]
@@ -125,7 +171,7 @@ pub struct Splitter;
 #[contractimpl]
 impl Splitter {
     /// Registers a new split and returns its id. Shares are basis points
-    /// and must sum to exactly 10_000. Passing a controller makes the
+    /// and must sum to exactly `10_000`. Passing a controller makes the
     /// split mutable by that address; passing None locks it forever.
     pub fn create_split(
         env: Env,
@@ -216,6 +262,44 @@ impl Splitter {
         Ok(())
     }
 
+    /// Pays several splits from one signer in a single transaction, each
+    /// with its own token. `ids`, `amounts`, and `tokens` pair up
+    /// positionally; any failure reverts all.
+    pub fn pay_many_multi(
+        env: Env,
+        from: Address,
+        ids: Vec<u64>,
+        amounts: Vec<i128>,
+        tokens: Vec<Address>,
+    ) -> Result<(), Error> {
+        from.require_auth();
+        if ids.is_empty() {
+            return Err(Error::NoRecipients);
+        }
+        if ids.len() != amounts.len() || ids.len() != tokens.len() {
+            return Err(Error::LengthMismatch);
+        }
+        for amount in amounts.iter() {
+            if amount <= 0 {
+                return Err(Error::InvalidAmount);
+            }
+        }
+        for i in 0..ids.len() {
+            let id = ids.get_unchecked(i);
+            let amount = amounts.get_unchecked(i);
+            let token = tokens.get_unchecked(i);
+            let split = load(&env, id)?;
+            payout(&env, &split, &from, &token, amount);
+            SplitPaid {
+                id,
+                token: token.clone(),
+                amount,
+            }
+            .publish(&env);
+        }
+        Ok(())
+    }
+
     /// Replaces the recipients and shares of a mutable split.
     pub fn update_split(
         env: Env,
@@ -234,25 +318,120 @@ impl Splitter {
         Ok(())
     }
 
-    /// Hands control of a mutable split to another address, or locks it
-    /// forever when the new controller is None.
+    /// Proposes transferring control to a new address (two-step), or locks the
+    /// split forever when `new_controller` is `None`.
+    ///
+    /// When `Some(addr)`, a pending controller is recorded and `accept_control`
+    /// must be called by that address to finalise the handover. The current
+    /// controller can cancel the proposal with `cancel_transfer`.
+    ///
+    /// When `None`, control is renounced immediately and irreversibly.
     pub fn transfer_control(
         env: Env,
         id: u64,
         new_controller: Option<Address>,
     ) -> Result<(), Error> {
-        let mut split = load(&env, id)?;
+        let split = load(&env, id)?;
         let controller = split.controller.clone().ok_or(Error::SplitImmutable)?;
         controller.require_auth();
-        split.controller = new_controller.clone();
+
+        match new_controller {
+            None => {
+                // Renounce immediately — no recovery possible.
+                let mut split = split;
+                split.controller = None;
+                env.storage().persistent().set(&DataKey::Split(id), &split);
+                ControlTransferred {
+                    id,
+                    new_controller: None,
+                }
+                .publish(&env);
+            }
+            Some(addr) => {
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::PendingController(id), &addr);
+                env.storage().persistent().extend_ttl(
+                    &DataKey::PendingController(id),
+                    TTL_THRESHOLD,
+                    TTL_EXTEND_TO,
+                );
+                ControlTransferProposed {
+                    id,
+                    new_controller: addr,
+                }
+                .publish(&env);
+            }
+        }
+        Ok(())
+    }
+
+    /// Accepts a pending control transfer. Only the proposed controller may
+    /// call this, after which they become the split's controller.
+    pub fn accept_control(env: Env, id: u64) -> Result<(), Error> {
+        let pending = env
+            .storage()
+            .persistent()
+            .get::<_, Address>(&DataKey::PendingController(id))
+            .ok_or(Error::NoPendingTransfer)?;
+
+        pending.require_auth();
+
+        let mut split = load(&env, id)?;
+        split.controller = Some(pending.clone());
         env.storage().persistent().set(&DataKey::Split(id), &split);
-        ControlTransferred { id, new_controller }.publish(&env);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingController(id));
+
+        ControlTransferred {
+            id,
+            new_controller: Some(pending),
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Cancels a pending control transfer. Only the current controller may
+    /// call this. Does nothing if no transfer is pending.
+    pub fn cancel_transfer(env: Env, id: u64) -> Result<(), Error> {
+        let split = load(&env, id)?;
+        let controller = split.controller.clone().ok_or(Error::SplitImmutable)?;
+        controller.require_auth();
+
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingController(id));
+        Ok(())
+    }
+
+    /// Closes a split and reclaims its storage. Only the controller can do this,
+    /// and only if the split holds no balances.
+    pub fn close_split(env: Env, id: u64) -> Result<(), Error> {
+        let split = load(&env, id)?;
+        let controller = split.controller.ok_or(Error::SplitImmutable)?;
+        controller.require_auth();
+
+        let tokens = Self::held_tokens(env.clone(), id);
+        if !tokens.is_empty() {
+            return Err(Error::SplitHasBalance);
+        }
+
+        env.storage().persistent().remove(&DataKey::Split(id));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingController(id));
+        SplitClosed { id }.publish(&env);
         Ok(())
     }
 
     /// Moves funds into the contract and credits them to the split without
     /// paying anyone yet. Useful when money arrives before a distribution
     /// should happen.
+    ///
+    /// Credits the amount the vault's balance actually increased by rather
+    /// than the requested `amount`, so fee-on-transfer tokens that deliver
+    /// less than requested cannot over-credit the split.
     pub fn deposit(
         env: Env,
         from: Address,
@@ -266,8 +445,13 @@ impl Splitter {
         }
         load(&env, id)?;
         let vault = env.current_contract_address();
-        token::Client::new(&env, &token).transfer(&from, &vault, &amount);
-        credit(&env, id, &token, amount);
+        let client = token::Client::new(&env, &token);
+        let before = client.balance(&vault);
+        client.transfer(&from, &vault, &amount);
+        let received = client.balance(&vault) - before;
+        if received > 0 {
+            credit(&env, id, &token, received);
+        }
         Ok(())
     }
 
@@ -324,6 +508,7 @@ impl Splitter {
         amounts(&env, &split, amount)
     }
 
+    #[must_use]
     pub fn balance(env: Env, id: u64, token: Address) -> i128 {
         env.storage()
             .persistent()
@@ -335,6 +520,7 @@ impl Splitter {
         load(&env, id)
     }
 
+    #[must_use]
     pub fn held_tokens(env: Env, id: u64) -> Vec<Address> {
         env.storage()
             .persistent()
@@ -342,6 +528,7 @@ impl Splitter {
             .unwrap_or_else(|| Vec::new(&env))
     }
 
+    #[must_use]
     pub fn splits_of(env: Env, creator: Address) -> Vec<u64> {
         env.storage()
             .persistent()
@@ -349,8 +536,48 @@ impl Splitter {
             .unwrap_or_else(|| Vec::new(&env))
     }
 
+    #[must_use]
+    pub fn splits_of_paged(env: Env, creator: Address, start: u32, limit: u32) -> Vec<u64> {
+        let all: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Created(creator))
+            .unwrap_or_else(|| Vec::new(&env));
+        let len = all.len();
+        if start >= len || limit == 0 {
+            return Vec::new(&env);
+        }
+        let mut page = Vec::new(&env);
+        let mut i = start;
+        let mut count = 0u32;
+        while i < len && count < limit {
+            page.push_back(all.get_unchecked(i));
+            i += 1;
+            count += 1;
+        }
+        page
+    }
+
+    #[must_use]
+    pub fn splits_of_count(env: Env, creator: Address) -> u32 {
+        let all: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Created(creator))
+            .unwrap_or_else(|| Vec::new(&env));
+        all.len()
+    }
+
+    #[must_use]
     pub fn split_count(env: Env) -> u64 {
         env.storage().instance().get(&DataKey::Count).unwrap_or(0)
+    }
+
+    #[must_use]
+    pub fn pending_controller(env: Env, id: u64) -> Option<Address> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PendingController(id))
     }
 }
 
@@ -394,7 +621,7 @@ fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
     let mut out = Vec::new(env);
     let last = split.recipients.len() - 1;
     let mut assigned: i128 = 0;
-    let total = I256::from_i128(env, TOTAL_SHARES as i128);
+    let total = I256::from_i128(env, i128::from(TOTAL_SHARES));
     for i in 0..split.recipients.len() {
         let part = if i == last {
             amount - assigned
@@ -403,8 +630,10 @@ fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
             // (custom high-supply tokens) before the division brings it back
             // into range. Compute the intermediate in 256-bit space so any
             // valid i128 amount stays panic- and wrap-free.
-            let product = I256::from_i128(env, amount)
-                .mul(&I256::from_i128(env, split.shares.get_unchecked(i) as i128));
+            let product = I256::from_i128(env, amount).mul(&I256::from_i128(
+                env,
+                i128::from(split.shares.get_unchecked(i)),
+            ));
             let part_i256 = product.div(&total);
             part_i256.to_i128().ok_or(Error::ArithmeticOverflow)?
         };

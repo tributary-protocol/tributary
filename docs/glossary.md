@@ -1,55 +1,16 @@
 # Glossary
 
-Core terms used throughout the Tributary protocol and documentation.
+Core terms used throughout Tributary.
 
----
-
-## Split
-
-A **split** is an on-chain routing rule that defines how incoming payments are divided among recipients. Each split has a unique numeric ID and stores:
-
-- **recipients** — A list of up to 32 addresses or child split IDs that receive a portion of every payment.
-- **shares** — Basis-point weights (summing to exactly 10,000) that determine each recipient's cut.
-- **controller** — An optional address authorized to update the split's recipients and shares. If `None`, the split is immutable forever.
-
-Splits are created with `create_split` and can be paid directly via `pay` or funded over time via `deposit` + `distribute`.
-
----
-
-## Share
-
-A **share** is a weight expressed in **basis points** (1/100 of a percent). Every split's shares must sum to **10,000** (representing 100%). For example, a three-way split with shares `[5000, 3000, 2000]` allocates 50%, 30%, and 20% respectively.
-
-Share math rounds each recipient's amount **down**; the leftover **dust** goes to the last recipient, guaranteeing amount-in equals amount-out.
-
-Basis points avoid floating-point arithmetic entirely. Instead of computing 33.33% of a payment, the contract computes `amount * 3333 / 10000`, which stays in integer arithmetic with no precision loss.
-
----
-
-## Controller
-
-The **controller** is an optional Stellar address assigned at split creation (or later via `transfer_control`). Only the controller may:
-
-- Update recipients and shares (`update_split`)
-- Transfer control to another address or renounce it (`transfer_control`)
-- Close the split and reclaim storage (`close_split`)
-
-If no controller is set (`None`), the split is **locked** — its routing table can never change. This is useful for trustless setups where the routing rule should be permanent.
-
----
-
-## Escrow
-
-**Escrow** refers to funds held inside the contract on behalf of a split. When `deposit` is called, the token amount is transferred to the contract and credited to `Balance(id, token)`. The funds sit in escrow until anyone calls `distribute`, which pays the full credited balance out to recipients according to the split's shares.
-
-Escrow is useful when money arrives over time and payouts happen on a schedule. Instead of paying each time funds arrive, callers `deposit` and someone later triggers `distribute` to pay everyone at once.
-
-Child splits (recipients of type `Split(u64)`) receive their portion as escrow credit rather than an immediate transfer, enabling composable routing trees without unbounded transaction size.
-
----
-
-## Dust
-
-**Dust** is the rounding remainder when a payment amount does not divide cleanly by the share basis points. Because each recipient's amount is computed as `floor(amount * share / 10000)`, the sum of rounded amounts can be slightly less than the total. The protocol assigns the difference to the **last recipient**, so the full input amount is always distributed with no loss.
-
-Example: 100 units split `[3333, 3333, 3334]` → `[33, 33, 34]`. The extra unit (100 − 33 − 33 = 34) is dust absorbed by the last recipient.
+| Term | Definition |
+| --- | --- |
+| **Split** | A routing rule stored on-chain. It holds a list of recipients and the share each one gets. Once created, anyone can push a payment through it. |
+| **Share** | The fraction of a payment a recipient receives, expressed in **basis points** (hundredths of a percent). All shares in a split must sum to exactly 10,000 (100%). |
+| **Basis point** | One hundredth of one percent (0.01%). 10,000 basis points = 100%. Shares are stored in basis points so they can be represented as integers with no rounding errors. |
+| **Recipient** | An entry in a split that receives a portion of every payment. A recipient is either an account address or another split (enabling nested routing). |
+| **Controller** | The address allowed to edit a split's recipients and shares after creation. If a split has no controller, it is **locked** and can never be changed. |
+| **Escrow** | Funds held inside the contract and credited to a specific split. Created by `deposit`, paid out by `distribute`. Useful when money arrives over time and payouts happen on a schedule. |
+| **Distribute** | A permissionless call that pays out a split's entire escrowed balance to its recipients according to their shares. |
+| **Dust** | The tiny leftover when a payment cannot be divided evenly among recipients. Tributary always gives the dust to the last recipient so the full amount lands somewhere. |
+| **Pay** | A direct, one-shot payment that splits an amount across all recipients in a single transaction. Nothing is held by the contract. |
+| **Deposit** | Moves funds into the contract and credits them to a split's escrow balance without paying out immediately. |

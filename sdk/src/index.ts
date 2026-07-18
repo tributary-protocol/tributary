@@ -21,9 +21,11 @@ import type {
   Timepoint,
   Duration,
 } from "@stellar/stellar-sdk/contract";
+import { Server as RpcServer, Api } from "@stellar/stellar-sdk/rpc";
 export * from "@stellar/stellar-sdk";
 export * as contract from "@stellar/stellar-sdk/contract";
 export * as rpc from "@stellar/stellar-sdk/rpc";
+export * from "./shares.js";
 
 if (typeof window !== "undefined") {
   //@ts-ignore Buffer exists
@@ -48,7 +50,10 @@ export const Errors = {
   7: {message:"InvalidAmount"},
   8: {message:"NothingToDistribute"},
   9: {message:"TooManyRecipients"},
-  10: {message:"BadChildSplit"}
+  10: {message:"BadChildSplit"},
+  11: {message:"ArithmeticOverflow"},
+  12: {message:"SplitHasBalance"},
+  13: {message:"NoPendingTransfer"},
 }
 
 
@@ -139,11 +144,41 @@ export interface Client {
 
   /**
    * Construct and simulate a transfer_control transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Hands control of a mutable split to another address, or locks it
-   * forever when the new controller is None.
+   * Proposes transferring control to a new address (two-step), or locks the
+   * split forever when `new_controller` is `None`.
    */
   transfer_control: ({id, new_controller}: {id: u64, new_controller: Option<string>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
+  /**
+   * Construct and simulate a accept_control transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Accepts a pending control transfer. Only the proposed controller may
+   * call this, after which they become the split's controller.
+   */
+  accept_control: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+
+  /**
+   * Construct and simulate a cancel_transfer transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Cancels a pending control transfer. Only the current controller may
+   * call this. Does nothing if no transfer is pending.
+   */
+  cancel_transfer: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+
+  /**
+   * Construct and simulate a close_split transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Closes a split and reclaims its storage. Only the controller can do this,
+   * and only if the split holds no balances.
+   */
+  close_split: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+
+  /**
+   * Construct and simulate a held_tokens transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  held_tokens: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Array<string>>>
+
+  /**
+   * Construct and simulate a pending_controller transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  pending_controller: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Option<string>>>
 }
 export class Client extends ContractClient {
   static async deploy<T = Client>(
@@ -162,27 +197,34 @@ export class Client extends ContractClient {
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAABAAAAAAAAAAAAAAABUVycm9yAAAAAAAACgAAAAAAAAAMTm9SZWNpcGllbnRzAAAAAQAAAAAAAAAOTGVuZ3RoTWlzbWF0Y2gAAAAAAAIAAAAAAAAACVplcm9TaGFyZQAAAAAAAAMAAAAAAAAADUJhZFNoYXJlVG90YWwAAAAAAAAEAAAAAAAAAA1TcGxpdE5vdEZvdW5kAAAAAAAABQAAAAAAAAAOU3BsaXRJbW11dGFibGUAAAAAAAYAAAAAAAAADUludmFsaWRBbW91bnQAAAAAAAAHAAAAAAAAABNOb3RoaW5nVG9EaXN0cmlidXRlAAAAAAgAAAAAAAAAEVRvb01hbnlSZWNpcGllbnRzAAAAAAAACQAAAAAAAAANQmFkQ2hpbGRTcGxpdAAAAAAAAAo=",
+      new ContractSpec([ "AAAABAAAAAAAAAAAAAAABUVycm9yAAAAAAAADQAAAAAAAAAMTm9SZWNpcGllbnRzAAAAAQAAAAAAAAAOTGVuZ3RoTWlzbWF0Y2gAAAAAAAIAAAAAAAAACVplcm9TaGFyZQAAAAAAAAMAAAAAAAAADUJhZFNoYXJlVG90YWwAAAAAAAAEAAAAAAAAAA1TcGxpdE5vdEZvdW5kAAAAAAAABQAAAAAAAAAOU3BsaXRJbW11dGFibGUAAAAAAAYAAAAAAAAADUludmFsaWRBbW91bnQAAAAAAAAHAAAAAAAAABNOb3RoaW5nVG9EaXN0cmlidXRlAAAAAAgAAAAAAAAAEVRvb01hbnlSZWNpcGllbnRzAAAAAAAACQAAAAAAAAANQmFkQ2hpbGRTcGxpdAAAAAAAAAoAAADUQW4gYXJpdGhtZXRpYyBwYXRoIHByb2R1Y2VkIGEgdmFsdWUgdGhhdCBkb2VzIG5vdCBmaXQgdGhlIGkxMjggdGhlCmNvbnRyYWN0IHN0b3Jlcy4gQ2FuIG9ubHkgaGFwcGVuIGlmIGEgc2hhcmUgZXhjZWVkcyBUT1RBTF9TSEFSRVMsIHdoaWNoCmB2YWxpZGF0ZWAgZm9yYmlkcywgYnV0IHdlIHN1cmZhY2UgaXQgYXMgYSB0eXBlZCBlcnJvciByYXRoZXIgdGhhbiBwYW5pYy4AAAASQXJpdGhtZXRpY092ZXJmbG93AAAAAAALAAAAAAAAAA9TcGxpdEhhc0JhbGFuY2UAAAAADAAAAEFDYWxsaW5nIGBhY2NlcHRfY29udHJvbGAgb24gYSBzcGxpdCB0aGF0IGhhcyBubyBwZW5kaW5nIHRyYW5zZmVyLgAAAAAAABFOb1BlbmRpbmdUcmFuc2ZlcgAAAAAAAA0=",
         "AAAAAQAAAAAAAAAAAAAABVNwbGl0AAAAAAAAAwAAAAAAAAAKY29udHJvbGxlcgAAAAAD6AAAABMAAAAAAAAACnJlY2lwaWVudHMAAAAAA+oAAAfQAAAACVJlY2lwaWVudAAAAAAAAAAAAAAGc2hhcmVzAAAAAAPqAAAABA==",
-        "AAAAAAAAAH9Nb3ZlcyBgYW1vdW50YCBvZiBgdG9rZW5gIGZyb20gdGhlIHBheWVyIHRvIGV2ZXJ5IHJlY2lwaWVudCBvZiB0aGUKc3BsaXQgaW4gb25lIGNhbGwuIFJvdW5kaW5nIGR1c3QgZ29lcyB0byB0aGUgbGFzdCByZWNpcGllbnQuAAAAAANwYXkAAAAABAAAAAAAAAAEZnJvbQAAABMAAAAAAAAAAmlkAAAAAAAGAAAAAAAAAAV0b2tlbgAAAAAAABMAAAAAAAAABmFtb3VudAAAAAAACwAAAAEAAAPpAAAAAgAAAAM=",
         "AAAAAgAAAAAAAAAAAAAACVJlY2lwaWVudAAAAAAAAAIAAAABAAAAAAAAAAdBY2NvdW50AAAAAAEAAAATAAAAAQAAAAAAAAAFU3BsaXQAAAAAAAABAAAABg==",
-        "AAAAAAAAAAAAAAAHYmFsYW5jZQAAAAACAAAAAAAAAAJpZAAAAAAABgAAAAAAAAAFdG9rZW4AAAAAAAATAAAAAQAAAAs=",
-        "AAAAAAAAAJVNb3ZlcyBmdW5kcyBpbnRvIHRoZSBjb250cmFjdCBhbmQgY3JlZGl0cyB0aGVtIHRvIHRoZSBzcGxpdCB3aXRob3V0CnBheWluZyBhbnlvbmUgeWV0LiBVc2VmdWwgd2hlbiBtb25leSBhcnJpdmVzIGJlZm9yZSBhIGRpc3RyaWJ1dGlvbgpzaG91bGQgaGFwcGVuLgAAAAAAAAdkZXBvc2l0AAAAAAQAAAAAAAAABGZyb20AAAATAAAAAAAAAAJpZAAAAAAABgAAAAAAAAAFdG9rZW4AAAAAAAATAAAAAAAAAAZhbW91bnQAAAAAAAsAAAABAAAD6QAAAAIAAAAD",
         "AAAABQAAAAAAAAAAAAAACURlcG9zaXRlZAAAAAAAAAEAAAAJZGVwb3NpdGVkAAAAAAAAAwAAAAAAAAACaWQAAAAAAAYAAAABAAAAAAAAAAV0b2tlbgAAAAAAABMAAAAAAAAAAAAAAAZhbW91bnQAAAAAAAsAAAAAAAAAAg==",
         "AAAABQAAAAAAAAAAAAAACVNwbGl0UGFpZAAAAAAAAAEAAAAKc3BsaXRfcGFpZAAAAAAAAwAAAAAAAAACaWQAAAAAAAYAAAABAAAAAAAAAAV0b2tlbgAAAAAAABMAAAAAAAAAAAAAAAZhbW91bnQAAAAAAAsAAAAAAAAAAg==",
+        "AAAABQAAAAAAAAAAAAAAC0Rpc3RyaWJ1dGVkAAAAAAEAAAALZGlzdHJpYnV0ZWQAAAAAAwAAAAAAAAACaWQAAAAAAAYAAAABAAAAAAAAAAV0b2tlbgAAAAAAABMAAAAAAAAAAAAAAAZhbW91bnQAAAAAAAsAAAAAAAAAAg==",
+        "AAAABQAAAAAAAAAAAAAAC1NwbGl0Q2xvc2VkAAAAAAEAAAAMc3BsaXRfY2xvc2VkAAAAAQAAAAAAAAACaWQAAAAAAAYAAAABAAAAAg==",
+        "AAAABQAAAAAAAAAAAAAADFNwbGl0Q3JlYXRlZAAAAAEAAAANc3BsaXRfY3JlYXRlZAAAAAAAAAIAAAAAAAAAAmlkAAAAAAAGAAAAAQAAAAAAAAAHY3JlYXRvcgAAAAATAAAAAAAAAAI=",
+        "AAAABQAAAAAAAAAAAAAADFNwbGl0VXBkYXRlZAAAAAEAAAANc3BsaXRfdXBkYXRlZAAAAAAAAAEAAAAAAAAAAmlkAAAAAAAGAAAAAQAAAAI=",
+        "AAAABQAAAAAAAAAAAAAAEkNvbnRyb2xUcmFuc2ZlcnJlZAAAAAAAAQAAABNjb250cm9sX3RyYW5zZmVycmVkAAAAAAIAAAAAAAAAAmlkAAAAAAAGAAAAAQAAAAAAAAAObmV3X2NvbnRyb2xsZXIAAAAAA+gAAAATAAAAAAAAAAI=",
+        "AAAABQAAAAAAAAAAAAAAF0NvbnRyb2xUcmFuc2ZlclByb3Bvc2VkAAAAAAEAAAAZY29udHJvbF90cmFuc2Zlcl9wcm9wb3NlZAAAAAAAAAIAAAAAAAAAAmlkAAAAAAAGAAAAAQAAAAAAAAAObmV3X2NvbnRyb2xsZXIAAAAAABMAAAAAAAAAAg==",
+        "AAAAAAAAAH9Nb3ZlcyBgYW1vdW50YCBvZiBgdG9rZW5gIGZyb20gdGhlIHBheWVyIHRvIGV2ZXJ5IHJlY2lwaWVudCBvZiB0aGUKc3BsaXQgaW4gb25lIGNhbGwuIFJvdW5kaW5nIGR1c3QgZ29lcyB0byB0aGUgbGFzdCByZWNpcGllbnQuAAAAAANwYXkAAAAABAAAAAAAAAAEZnJvbQAAABMAAAAAAAAAAmlkAAAAAAAGAAAAAAAAAAV0b2tlbgAAAAAAABMAAAAAAAAABmFtb3VudAAAAAAACwAAAAEAAAPpAAAAAgAAAAM=",
+        "AAAAAAAAAAAAAAAHYmFsYW5jZQAAAAACAAAAAAAAAAJpZAAAAAAABgAAAAAAAAAFdG9rZW4AAAAAAAATAAAAAQAAAAs=",
+        "AAAAAAAAAVBNb3ZlcyBmdW5kcyBpbnRvIHRoZSBjb250cmFjdCBhbmQgY3JlZGl0cyB0aGVtIHRvIHRoZSBzcGxpdCB3aXRob3V0CnBheWluZyBhbnlvbmUgeWV0LiBVc2VmdWwgd2hlbiBtb25leSBhcnJpdmVzIGJlZm9yZSBhIGRpc3RyaWJ1dGlvbgpzaG91bGQgaGFwcGVuLgoKQ3JlZGl0cyB0aGUgYW1vdW50IHRoZSB2YXVsdCdzIGJhbGFuY2UgYWN0dWFsbHkgaW5jcmVhc2VkIGJ5IHJhdGhlcgp0aGFuIHRoZSByZXF1ZXN0ZWQgYGFtb3VudGAsIHNvIGZlZS1vbi10cmFuc2ZlciB0b2tlbnMgdGhhdCBkZWxpdmVyCmxlc3MgdGhhbiByZXF1ZXN0ZWQgY2Fubm90IG92ZXItY3JlZGl0IHRoZSBzcGxpdC4AAAAHZGVwb3NpdAAAAAAEAAAAAAAAAARmcm9tAAAAEwAAAAAAAAACaWQAAAAAAAYAAAAAAAAABXRva2VuAAAAAAAAEwAAAAAAAAAGYW1vdW50AAAAAAALAAAAAQAAA+kAAAACAAAAAw==",
         "AAAAAAAAAH9QYXlzIHNldmVyYWwgc3BsaXRzIGZyb20gb25lIHNpZ25lciBpbiBhIHNpbmdsZSB0cmFuc2FjdGlvbi4KYGlkc2AgYW5kIGBhbW91bnRzYCBwYWlyIHVwIHBvc2l0aW9uYWxseTsgYW55IGZhaWx1cmUgcmV2ZXJ0cyBhbGwuAAAAAAhwYXlfbWFueQAAAAQAAAAAAAAABGZyb20AAAATAAAAAAAAAANpZHMAAAAD6gAAAAYAAAAAAAAAB2Ftb3VudHMAAAAD6gAAAAsAAAAAAAAABXRva2VuAAAAAAAAEwAAAAEAAAPpAAAAAgAAAAM=",
         "AAAAAAAAAAAAAAAJZ2V0X3NwbGl0AAAAAAAAAQAAAAAAAAACaWQAAAAAAAYAAAABAAAD6QAAB9AAAAAFU3BsaXQAAAAAAAAD",
         "AAAAAAAAAAAAAAAJc3BsaXRzX29mAAAAAAAAAQAAAAAAAAAHY3JlYXRvcgAAAAATAAAAAQAAA+oAAAAG",
-        "AAAABQAAAAAAAAAAAAAAC0Rpc3RyaWJ1dGVkAAAAAAEAAAALZGlzdHJpYnV0ZWQAAAAAAwAAAAAAAAACaWQAAAAAAAYAAAABAAAAAAAAAAV0b2tlbgAAAAAAABMAAAAAAAAAAAAAAAZhbW91bnQAAAAAAAsAAAAAAAAAAg==",
         "AAAAAAAAAH5QYXlzIG91dCBldmVyeXRoaW5nIGNyZWRpdGVkIHRvIHRoZSBzcGxpdCBmb3IgdGhlIGdpdmVuIHRva2VuLgpBbnlvbmUgY2FuIGNhbGwgdGhpczsgdGhlIHJvdXRpbmcgdGFibGUgZGVjaWRlcyB3aGVyZSBmdW5kcyBnby4AAAAAAApkaXN0cmlidXRlAAAAAAACAAAAAAAAAAJpZAAAAAAABgAAAAAAAAAFdG9rZW4AAAAAAAATAAAAAQAAA+kAAAALAAAAAw==",
-        "AAAABQAAAAAAAAAAAAAADFNwbGl0Q3JlYXRlZAAAAAEAAAANc3BsaXRfY3JlYXRlZAAAAAAAAAIAAAAAAAAAAmlkAAAAAAAGAAAAAQAAAAAAAAAHY3JlYXRvcgAAAAATAAAAAAAAAAI=",
-        "AAAABQAAAAAAAAAAAAAADFNwbGl0VXBkYXRlZAAAAAEAAAANc3BsaXRfdXBkYXRlZAAAAAAAAAEAAAAAAAAAAmlkAAAAAAAGAAAAAQAAAAI=",
+        "AAAAAAAAAHJDbG9zZXMgYSBzcGxpdCBhbmQgcmVjbGFpbXMgaXRzIHN0b3JhZ2UuIE9ubHkgdGhlIGNvbnRyb2xsZXIgY2FuIGRvIHRoaXMsCmFuZCBvbmx5IGlmIHRoZSBzcGxpdCBob2xkcyBubyBiYWxhbmNlcy4AAAAAAAtjbG9zZV9zcGxpdAAAAAABAAAAAAAAAAJpZAAAAAAABgAAAAEAAAPpAAAAAgAAAAM=",
+        "AAAAAAAAAAAAAAALaGVsZF90b2tlbnMAAAAAAQAAAAAAAAACaWQAAAAAAAYAAAABAAAD6gAAABM=",
         "AAAAAAAAAAAAAAALc3BsaXRfY291bnQAAAAAAAAAAAEAAAAG",
         "AAAAAAAAAL5SZWdpc3RlcnMgYSBuZXcgc3BsaXQgYW5kIHJldHVybnMgaXRzIGlkLiBTaGFyZXMgYXJlIGJhc2lzIHBvaW50cwphbmQgbXVzdCBzdW0gdG8gZXhhY3RseSAxMF8wMDAuIFBhc3NpbmcgYSBjb250cm9sbGVyIG1ha2VzIHRoZQpzcGxpdCBtdXRhYmxlIGJ5IHRoYXQgYWRkcmVzczsgcGFzc2luZyBOb25lIGxvY2tzIGl0IGZvcmV2ZXIuAAAAAAAMY3JlYXRlX3NwbGl0AAAABAAAAAAAAAAHY3JlYXRvcgAAAAATAAAAAAAAAApyZWNpcGllbnRzAAAAAAPqAAAH0AAAAAlSZWNpcGllbnQAAAAAAAAAAAAABnNoYXJlcwAAAAAD6gAAAAQAAAAAAAAACmNvbnRyb2xsZXIAAAAAA+gAAAATAAAAAQAAA+kAAAAGAAAAAw==",
         "AAAAAAAAADZSZXBsYWNlcyB0aGUgcmVjaXBpZW50cyBhbmQgc2hhcmVzIG9mIGEgbXV0YWJsZSBzcGxpdC4AAAAAAAx1cGRhdGVfc3BsaXQAAAADAAAAAAAAAAJpZAAAAAAABgAAAAAAAAAKcmVjaXBpZW50cwAAAAAD6gAAB9AAAAAJUmVjaXBpZW50AAAAAAAAAAAAAAZzaGFyZXMAAAAAA+oAAAAEAAAAAQAAA+kAAAACAAAAAw==",
+        "AAAAAAAAAH9BY2NlcHRzIGEgcGVuZGluZyBjb250cm9sIHRyYW5zZmVyLiBPbmx5IHRoZSBwcm9wb3NlZCBjb250cm9sbGVyIG1heQpjYWxsIHRoaXMsIGFmdGVyIHdoaWNoIHRoZXkgYmVjb21lIHRoZSBzcGxpdCdzIGNvbnRyb2xsZXIuAAAAAA5hY2NlcHRfY29udHJvbAAAAAAAAQAAAAAAAAACaWQAAAAAAAYAAAABAAAD6QAAAAIAAAAD",
         "AAAAAAAAAGZSZXR1cm5zIHRoZSBleGFjdCBwZXItcmVjaXBpZW50IGFtb3VudHMgYSBwYXltZW50IG9mIGBhbW91bnRgIHdvdWxkCnByb2R1Y2UsIHdpdGhvdXQgbW92aW5nIGFueSBmdW5kcy4AAAAAAA5wcmV2aWV3X3BheW91dAAAAAAAAgAAAAAAAAACaWQAAAAAAAYAAAAAAAAABmFtb3VudAAAAAAACwAAAAEAAAPpAAAD6gAAAAsAAAAD",
-        "AAAAAAAAAGlIYW5kcyBjb250cm9sIG9mIGEgbXV0YWJsZSBzcGxpdCB0byBhbm90aGVyIGFkZHJlc3MsIG9yIGxvY2tzIGl0CmZvcmV2ZXIgd2hlbiB0aGUgbmV3IGNvbnRyb2xsZXIgaXMgTm9uZS4AAAAAAAAQdHJhbnNmZXJfY29udHJvbAAAAAIAAAAAAAAAAmlkAAAAAAAGAAAAAAAAAA5uZXdfY29udHJvbGxlcgAAAAAD6AAAABMAAAABAAAD6QAAAAIAAAAD",
-        "AAAABQAAAAAAAAAAAAAAEkNvbnRyb2xUcmFuc2ZlcnJlZAAAAAAAAQAAABNjb250cm9sX3RyYW5zZmVycmVkAAAAAAIAAAAAAAAAAmlkAAAAAAAGAAAAAQAAAAAAAAAObmV3X2NvbnRyb2xsZXIAAAAAA+gAAAATAAAAAAAAAAI=" ]),
+        "AAAAAAAAAHZDYW5jZWxzIGEgcGVuZGluZyBjb250cm9sIHRyYW5zZmVyLiBPbmx5IHRoZSBjdXJyZW50IGNvbnRyb2xsZXIgbWF5CmNhbGwgdGhpcy4gRG9lcyBub3RoaW5nIGlmIG5vIHRyYW5zZmVyIGlzIHBlbmRpbmcuAAAAAAAPY2FuY2VsX3RyYW5zZmVyAAAAAAEAAAAAAAAAAmlkAAAAAAAGAAAAAQAAA+kAAAACAAAAAw==",
+        "AAAAAAAAAYFQcm9wb3NlcyB0cmFuc2ZlcnJpbmcgY29udHJvbCB0byBhIG5ldyBhZGRyZXNzICh0d28tc3RlcCksIG9yIGxvY2tzIHRoZQpzcGxpdCBmb3JldmVyIHdoZW4gYG5ld19jb250cm9sbGVyYCBpcyBgTm9uZWAuCgpXaGVuIGBTb21lKGFkZHIpYCwgYSBwZW5kaW5nIGNvbnRyb2xsZXIgaXMgcmVjb3JkZWQgYW5kIGBhY2NlcHRfY29udHJvbGAKbXVzdCBiZSBjYWxsZWQgYnkgdGhhdCBhZGRyZXNzIHRvIGZpbmFsaXNlIHRoZSBoYW5kb3Zlci4gVGhlIGN1cnJlbnQKY29udHJvbGxlciBjYW4gY2FuY2VsIHRoZSBwcm9wb3NhbCB3aXRoIGBjYW5jZWxfdHJhbnNmZXJgLgoKV2hlbiBgTm9uZWAsIGNvbnRyb2wgaXMgcmVub3VuY2VkIGltbWVkaWF0ZWx5IGFuZCBpcnJldmVyc2libHkuAAAAAAAAEHRyYW5zZmVyX2NvbnRyb2wAAAACAAAAAAAAAAJpZAAAAAAABgAAAAAAAAAObmV3X2NvbnRyb2xsZXIAAAAAA+gAAAATAAAAAQAAA+kAAAACAAAAAw==",
+        "AAAAAAAAAAAAAAAScGVuZGluZ19jb250cm9sbGVyAAAAAAABAAAAAAAAAAJpZAAAAAAABgAAAAEAAAPoAAAAEw==" ]),
       options
     )
   }
@@ -194,10 +236,56 @@ export class Client extends ContractClient {
         get_split: this.txFromJSON<Result<Split>>,
         splits_of: this.txFromJSON<Array<u64>>,
         distribute: this.txFromJSON<Result<i128>>,
+        close_split: this.txFromJSON<Result<void>>,
+        held_tokens: this.txFromJSON<Array<string>>,
         split_count: this.txFromJSON<u64>,
         create_split: this.txFromJSON<Result<u64>>,
         update_split: this.txFromJSON<Result<void>>,
+        accept_control: this.txFromJSON<Result<void>>,
         preview_payout: this.txFromJSON<Result<Array<i128>>>,
-        transfer_control: this.txFromJSON<Result<void>>
+        cancel_transfer: this.txFromJSON<Result<void>>,
+        transfer_control: this.txFromJSON<Result<void>>,
+        pending_controller: this.txFromJSON<Option<string>>
   }
+}
+
+/**
+ * Polls for a transaction to be confirmed or fail, with a timeout.
+ *
+ * @param txHash - Hex-encoded hash of the transaction to wait for.
+ * @param options - Optional configuration.
+ * @param options.rpcUrl - RPC server URL. Defaults to Soroban testnet.
+ * @param options.timeout - Max wait time in ms. Default 30_000.
+ * @param options.pollInterval - Time between polls in ms. Default 1_000.
+ * @returns The successful or failed transaction response.
+ * @throws If the transaction is not confirmed within the timeout.
+ */
+export async function waitForConfirmation(
+  txHash: string,
+  options?: {
+    rpcUrl?: string;
+    timeout?: number;
+    pollInterval?: number;
+  },
+): Promise<Api.GetSuccessfulTransactionResponse | Api.GetFailedTransactionResponse> {
+  const rpcUrl = options?.rpcUrl ?? "https://soroban-testnet.stellar.org";
+  const timeout = options?.timeout ?? 30_000;
+  const pollInterval = options?.pollInterval ?? 1_000;
+  const server = new RpcServer(rpcUrl);
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() < deadline) {
+    const response = await server.getTransaction(txHash);
+    if (response.status === Api.GetTransactionStatus.SUCCESS) {
+      return response as Api.GetSuccessfulTransactionResponse;
+    }
+    if (response.status === Api.GetTransactionStatus.FAILED) {
+      return response as Api.GetFailedTransactionResponse;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+  }
+
+  throw new Error(
+    `Transaction ${txHash} was not confirmed within ${timeout / 1_000}s`,
+  );
 }
