@@ -474,6 +474,80 @@ select.lang-select:focus {
   border-color: var(--accent);
 }
 
+.detail-history {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.detail-history-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.detail-history-loading,
+.detail-history-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.detail-history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.detail-history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.badge-history {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  text-transform: lowercase;
+}
+
+.badge-history.split_paid {
+  color: #4cc3ff;
+  border-color: rgba(76, 195, 255, 0.2);
+  background: rgba(76, 195, 255, 0.05);
+}
+
+.badge-history.distributed {
+  color: #a78bfa;
+  border-color: rgba(167, 139, 250, 0.2);
+  background: rgba(167, 139, 250, 0.05);
+}
+
+.history-amount {
+  flex: 1;
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.history-tx-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+}
+
+.history-tx-link:hover {
+  text-decoration: underline;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;

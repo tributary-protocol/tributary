@@ -31,6 +31,95 @@ Create a mutable split with your multisig as controller and each member as a rec
 
 Make the referrer share its own split: the marketplace split routes 2% to `Split(referrerPool)`, and the pool split divides that among active referrers. Updating the referrer roster never touches the marketplace split.
 
+### Distributing a two-level tree
+
+Nested splits are settled one level per call. A distribution pays account
+recipients immediately, but credits split recipients to their own escrow
+balances. Call `distribute` again for each credited child to move the funds to
+the leaves.
+
+For example, route a 1,000 USDC deposit through this tree:
+
+```text
+root
+├── 60% → engineering
+│   ├── 50% → alice (300)
+│   └── 50% → bob   (300)
+└── 40% → design
+    ├── 75% → carol (300)
+    └── 25% → dave  (100)
+```
+
+Create children before their parent because a split may only reference an
+existing split. The example assumes `client`, `signTransaction`, `creator`,
+`payer`, `USDC`, and the four account addresses are already configured:
+
+```ts
+const create = async (
+  recipients: Parameters<typeof client.create_split>[0]["recipients"],
+  shares: number[],
+) => {
+  const tx = await client.create_split({
+    creator,
+    recipients,
+    shares,
+    controller: undefined,
+  });
+  const { result } = await tx.signAndSend({ signTransaction });
+  return result.unwrap();
+};
+
+const engineering = await create(
+  [
+    { tag: "Account", values: [alice] },
+    { tag: "Account", values: [bob] },
+  ],
+  [5_000, 5_000],
+);
+const design = await create(
+  [
+    { tag: "Account", values: [carol] },
+    { tag: "Account", values: [dave] },
+  ],
+  [7_500, 2_500],
+);
+const root = await create(
+  [
+    { tag: "Split", values: [engineering] },
+    { tag: "Split", values: [design] },
+  ],
+  [6_000, 4_000],
+);
+
+const deposit = await client.deposit({
+  from: payer,
+  id: root,
+  token: USDC,
+  amount: 1_000n,
+});
+await deposit.signAndSend({ signTransaction });
+
+// Call 1 empties root and credits 600 to engineering and 400 to design.
+const distributeRoot = await client.distribute({ id: root, token: USDC });
+await distributeRoot.signAndSend({ signTransaction });
+
+// Calls 2 and 3 empty the children and pay the four account recipients.
+const distributeEngineering = await client.distribute({
+  id: engineering,
+  token: USDC,
+});
+await distributeEngineering.signAndSend({ signTransaction });
+
+const distributeDesign = await client.distribute({ id: design, token: USDC });
+await distributeDesign.signAndSend({ signTransaction });
+```
+
+Each `signAndSend` is a separate transaction. Wait for the parent distribution
+to confirm before constructing child distributions, so their simulated escrow
+balances include the newly credited funds. Calls for sibling children can be
+submitted independently after that. Anyone may submit these calls; no payer or
+controller signature is required for `distribute`.
+
 ## Reading state
 
 - `preview_payout(id, amount)` tells you the exact cut per recipient before sending, useful for checkout screens.
