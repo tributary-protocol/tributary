@@ -37,5 +37,8 @@ jobs:
           node-version: 22
       - run: npm install && npm run build
         working-directory: sdk
+      - name: Check SDK bundle size
+        run: npm run check-size
+        working-directory: sdk
       - run: npm install && npm run build
         working-directory: app
