@@ -548,6 +548,58 @@ select.lang-select:focus {
   text-decoration: underline;
 }
 
+/* ── Loading skeletons ────────────────────────────────── */
+
+.skeleton-split {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  cursor: default;
+}
+
+.skeleton-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.skeleton-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skeleton-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--line) 25%,
+    rgba(31, 44, 69, 0.4) 50%,
+    var(--line) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-id   { width: 48px; }
+.skeleton-badge { width: 52px; }
+.skeleton-addr { width: 140px; }
+.skeleton-pct  { width: 36px; }
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;

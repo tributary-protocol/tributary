@@ -129,7 +129,27 @@ export default function SplitList({
   const [open, setOpen] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  if (loading) return <p className="note">{t("loadingSplits")}</p>;
+  if (loading)
+    return (
+      <div className="splits">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div className="skeleton-split" key={i}>
+            <div className="skeleton-head">
+              <div className="skeleton-line skeleton-id" />
+              <div className="skeleton-line skeleton-badge" />
+            </div>
+            <div className="skeleton-body">
+              {Array.from({ length: 3 }, (_, j) => (
+                <div className="skeleton-row" key={j}>
+                  <div className="skeleton-line skeleton-addr" />
+                  <div className="skeleton-line skeleton-pct" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   if (splits.length === 0) {
     return (
       <div className="empty">
