@@ -16,6 +16,7 @@
     "splits"
   ],
   "type": "module",
+  "main": "dist/tributary-sdk.umd.js",
   "exports": "./dist/index.js",
   "typings": "dist/index.d.ts",
   "files": [
@@ -27,8 +28,9 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
-    "test": "npm run build && node --test dist/*.test.js",
+    "build": "tsc && npm run build:umd",
+    "build:umd": "esbuild dist/index.js --bundle --format=iife --global-name=Tributary --outfile=dist/tributary-sdk.umd.js --platform=browser --target=es2020",
+    "test": "npm run build && node --test dist/*.test.js umd.test.mjs",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -37,6 +39,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
+    "esbuild": "^0.25.0",
     "typescript": "^7.0.2"
   }
 }

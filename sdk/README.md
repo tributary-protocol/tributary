@@ -22,6 +22,8 @@ npm run build
 
 ## Usage
 
+### Module / Bundler
+
 ```ts
 import { Client, networks } from "tributary-sdk";
 
@@ -53,6 +55,26 @@ recipients: [
   { tag: "Account", values: ["G…"] },
   { tag: "Split", values: [2n] },
 ],
+```
+
+### Script tag / UMD
+
+For consumers without a bundler, a UMD build is provided via `unpkg` (or any other npm CDN). It exposes all exports on a `Tributary` global variable:
+
+```html
+<script src="https://unpkg.com/tributary-sdk/dist/tributary-sdk.umd.js"></script>
+<script>
+  // The client and networks are available under the Tributary global
+  const client = new Tributary.Client({
+    ...Tributary.networks.testnet,
+    rpcUrl: "https://soroban-testnet.stellar.org",
+  });
+
+  // Example: fetch a split
+  client.get_split({ id: 0n }).then(({ result }) => {
+    console.log(result);
+  });
+</script>
 ```
 
 ## Regenerating
