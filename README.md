@@ -99,6 +99,8 @@ app                  web dashboard (Vite + React, Freighter wallet)
 
 [docs/quickstart.md](docs/quickstart.md) is a five-minute SDK quickstart: install, read a split, create one, and pay through it.
 
+[docs/deploy.md](docs/deploy.md) walks through building and deploying the contract to testnet with the Stellar CLI, then regenerating the SDK.
+
 ## Contributing
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get set up and what a good change looks like.
