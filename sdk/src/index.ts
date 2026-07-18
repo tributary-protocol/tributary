@@ -129,7 +129,7 @@ export interface Client {
    * Moves `amount` of `token` from the payer to every recipient of the
    * split in one call. Rounding dust goes to the last recipient.
    */
-  pay: ({from, id, token, amount, reference}: {from: string, id: u64, token: string, amount: i128, reference: Option<Buffer>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  pay: ({from, id, token, amount, reference}: {from: string, id: u64, token: string, amount: i128, reference?: Option<Buffer>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a balance transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -157,7 +157,7 @@ export interface Client {
    * and pairs up positionally too. An empty `references` vec means "no
    * reference for any split"; otherwise it must match `ids.len()` exactly.
    */
-  pay_many: ({from, ids, amounts, token, references}: {from: string, ids: Array<u64>, amounts: Array<i128>, token: string, references: Array<Option<Buffer>>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  pay_many: ({from, ids, amounts, token, references}: {from: string, ids: Array<u64>, amounts: Array<i128>, token: string, references?: Array<Option<Buffer>>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a get_split transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -217,7 +217,7 @@ export interface Client {
    * and pairs up positionally too. An empty `references` vec means "no
    * reference for any split"; otherwise it must match `ids.len()` exactly.
    */
-  pay_many_multi: ({from, ids, amounts, tokens, references}: {from: string, ids: Array<u64>, amounts: Array<i128>, tokens: Array<string>, references: Array<Option<Buffer>>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  pay_many_multi: ({from, ids, amounts, tokens, references}: {from: string, ids: Array<u64>, amounts: Array<i128>, tokens: Array<string>, references?: Array<Option<Buffer>>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a preview_payout transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -290,6 +290,22 @@ export class Client extends ContractClient {
         "AAAAAAAAAGlIYW5kcyBjb250cm9sIG9mIGEgbXV0YWJsZSBzcGxpdCB0byBhbm90aGVyIGFkZHJlc3MsIG9yIGxvY2tzIGl0CmZvcmV2ZXIgd2hlbiB0aGUgbmV3IGNvbnRyb2xsZXIgaXMgTm9uZS4AAAAAAAAQdHJhbnNmZXJfY29udHJvbAAAAAIAAAAAAAAAAmlkAAAAAAAGAAAAAAAAAA5uZXdfY29udHJvbGxlcgAAAAAD6AAAABMAAAABAAAD6QAAAAIAAAAD" ]),
       options
     )
+
+    // Override methods to supply defaults for omitted optional reference params.
+    // The parent ContractClient's funcArgsToScVals requires every field to be present,
+    // so we intercept and fill in undefined → undefined (which encodes as None).
+    const payOrig = (this as any).pay;
+    (this as any).pay = (args: {from: string, id: u64, token: string, amount: i128, reference?: Option<Buffer>}, options?: MethodOptions) => {
+      return payOrig.call(this, { ...args, reference: args.reference }, options);
+    };
+    const payManyOrig = (this as any).pay_many;
+    (this as any).pay_many = (args: {from: string, ids: Array<u64>, amounts: Array<i128>, token: string, references?: Array<Option<Buffer>>}, options?: MethodOptions) => {
+      return payManyOrig.call(this, { ...args, references: args.references ?? [] }, options);
+    };
+    const payManyMultiOrig = (this as any).pay_many_multi;
+    (this as any).pay_many_multi = (args: {from: string, ids: Array<u64>, amounts: Array<i128>, tokens: Array<string>, references?: Array<Option<Buffer>>}, options?: MethodOptions) => {
+      return payManyMultiOrig.call(this, { ...args, references: args.references ?? [] }, options);
+    }
   }
   public readonly fromJSON = {
     pay: this.txFromJSON<Result<void>>,

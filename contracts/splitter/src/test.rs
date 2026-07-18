@@ -455,9 +455,13 @@ fn pay_many_rejects_bad_batches() {
         &None,
     );
 
-    let empty =
-        s.client
-            .try_pay_many(&payer, &vec![&s.env], &vec![&s.env], &token_id, &vec![&s.env]);
+    let empty = s.client.try_pay_many(
+        &payer,
+        &vec![&s.env],
+        &vec![&s.env],
+        &token_id,
+        &vec![&s.env],
+    );
     assert_eq!(empty, Err(Ok(Error::NoRecipients)));
 
     let mismatch = s.client.try_pay_many(
@@ -1238,8 +1242,13 @@ fn every_error_code_maps_to_its_triggering_call() {
     );
     // 1 NoRecipients — pay_many with empty ids
     assert_eq!(
-        s.client
-            .try_pay_many(&payer, &vec![&s.env], &vec![&s.env], &token_id, &vec![&s.env]),
+        s.client.try_pay_many(
+            &payer,
+            &vec![&s.env],
+            &vec![&s.env],
+            &token_id,
+            &vec![&s.env]
+        ),
         Err(Ok(Error::NoRecipients))
     );
 
