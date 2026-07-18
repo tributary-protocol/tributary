@@ -99,6 +99,8 @@ app                  web dashboard (Vite + React, Freighter wallet)
 
 [docs/quickstart.md](docs/quickstart.md) is a five-minute SDK quickstart: install, read a split, create one, and pay through it.
 
+[docs/splits-vs-multisend.md](docs/splits-vs-multisend.md) explains why atomic splits beat sending N separate transfers, and where manual multi-send still fits.
+
 [docs/deploy.md](docs/deploy.md) walks through building and deploying the contract to testnet with the Stellar CLI, then regenerating the SDK.
 
 ## Contributing
