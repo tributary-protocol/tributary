@@ -1,6 +1,6 @@
 # tributary-indexer
 
-Small poller that follows the splitter contract's events and appends them to a newline-delimited JSON file. Useful for payment history, accounting exports or webhooks without standing up real infrastructure.
+Small poller that follows one or more splitter contract's events and appends them to a newline-delimited JSON file. Useful for payment history, accounting exports or webhooks without standing up real infrastructure.
 
 ## Run
 
@@ -25,7 +25,8 @@ Environment variables, all optional:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `RPC_URL` | testnet RPC | Soroban RPC endpoint |
-| `CONTRACT_ID` | current testnet splitter | contract to follow |
+| `CONTRACT_IDS` | current testnet splitter | comma-separated contract ids to follow |
+| `CONTRACT_ID` | _(fallback)_ | single contract id; used when `CONTRACT_IDS` is unset |
 | `OUT` | `events.ndjson` | output file |
 | `STATE` | `state.json` | cursor file |
 | `POLL_MS` | `10000` | poll interval |
@@ -58,7 +59,7 @@ To ensure the indexer doesn't lose its cursor (state) and successfully records e
 docker run -d \
   --name tributary-indexer \
   -v $(pwd)/data:/app/data \
-  -e CONTRACT_ID="YOUR_CONTRACT_ID" \
+  -e CONTRACT_IDS="CABC...,CDEF..." \
   tributary-indexer
 ```
 
@@ -67,7 +68,7 @@ By default, the Docker image is configured to write to `/app/data/events.ndjson`
 | Variable | Default inside Container | Description |
 | --- | --- | --- |
 | `RPC_URL` | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint |
-| `CONTRACT_ID` | `CCZXVZUQIZT673QF6ZGLI5AJLEPWUFWVYOPIOJNLNIOO5NI27V4JGJUU` | Contract ID to follow |
+| `CONTRACT_IDS` | `CCZXVZUQIZT673QF6ZGLI5AJLEPWUFWVYOPIOJNLNIOO5NI27V4JGJUU` | Comma-separated contract IDs to follow |
 | `OUT` | `/app/data/events.ndjson` | Output events file path |
 | `STATE` | `/app/data/state.json` | Cursor state file path |
 | `POLL_MS` | `10000` | Polling interval in milliseconds |

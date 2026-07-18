@@ -3,22 +3,30 @@ import { rpc, scValToNative } from "@stellar/stellar-sdk";
 import { withRateLimitBackoff } from "./rpc-backoff.mjs";
 
 const DEFAULT_RPC_URL = "https://soroban-testnet.stellar.org";
-const DEFAULT_CONTRACT_ID =
+const DEFAULT_CONTRACT_IDS =
   "CCZXVZUQIZT673QF6ZGLI5AJLEPWUFWVYOPIOJNLNIOO5NI27V4JGJUU";
+
+function parseContractIds(env) {
+  const raw = (env.CONTRACT_IDS ?? env.CONTRACT_ID ?? DEFAULT_CONTRACT_IDS).trim();
+  return raw
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
 
 function validateConfig(env = process.env) {
   const errors = [];
   const RPC_URL = (env.RPC_URL ?? DEFAULT_RPC_URL).trim();
-  const CONTRACT_ID = (env.CONTRACT_ID ?? DEFAULT_CONTRACT_ID).trim();
+  const contractIds = parseContractIds(env);
 
   if (!RPC_URL) errors.push("RPC_URL is required");
-  if (!CONTRACT_ID) errors.push("CONTRACT_ID is required");
+  if (contractIds.length === 0) errors.push("CONTRACT_IDS is required (comma-separated list)");
 
   if (errors.length > 0) {
     return { ok: false, error: `Invalid indexer configuration:\n- ${errors.join("\n- ")}` };
   }
 
-  return { ok: true, value: { RPC_URL, CONTRACT_ID } };
+  return { ok: true, value: { RPC_URL, contractIds } };
 }
 
 export { validateConfig };
@@ -29,7 +37,7 @@ if (!config.ok) {
   process.exit(1);
 }
 
-const { RPC_URL, CONTRACT_ID } = config.value;
+const { RPC_URL, contractIds } = config.value;
 const OUT = process.env.OUT ?? "events.ndjson";
 const STATE = process.env.STATE ?? "state.json";
 const POLL_MS = Number(process.env.POLL_MS ?? 10_000);
@@ -49,6 +57,7 @@ function saveCursor(cursor) {
 
 function decode(ev) {
   const record = {
+    contractId: ev.contractId,
     ledger: ev.ledger,
     txHash: ev.txHash,
     id: ev.id,
@@ -128,7 +137,7 @@ async function poll() {
   if (shutdownRequested) return;
   isPolling = true;
   let cursor = loadCursor();
-  const filters = [{ type: "contract", contractIds: [CONTRACT_ID] }];
+  const filters = [{ type: "contract", contractIds }];
   let total = 0;
 
   try {
@@ -173,6 +182,7 @@ async function poll() {
   }
 }
 
-console.log(`indexing ${CONTRACT_ID} from ${RPC_URL} every ${POLL_MS}ms`);
+console.log(`indexing ${contractIds.length} contract(s) from ${RPC_URL} every ${POLL_MS}ms`);
+for (const id of contractIds) console.log(`  → ${id}`);
 await poll();
 intervalId = setInterval(() => poll().catch((e) => console.error(e.message ?? e)), POLL_MS);
