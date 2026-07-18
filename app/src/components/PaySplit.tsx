@@ -138,7 +138,10 @@ export default function PaySplit({
           ))}
         </ul>
       )}
+<<<<<<< HEAD
       <FeeHint assemble={assembleFee} />
+=======
+>>>>>>> 4ede99ef41d97d76a6e471a915a22baf215f594b
       <button disabled={busy || !!amountError} onClick={submit}>
         {busy ? t("waitingForSignature") : t("payButton")}
       </button>
