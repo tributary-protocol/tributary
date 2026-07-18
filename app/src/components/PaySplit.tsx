@@ -3,7 +3,7 @@ import {
   walletClient,
   toStroops,
   fromStroops,
-  previewPayout,
+  localPreviewPayout,
   recipientLabel,
   TOKENS,
   SplitView,
@@ -40,9 +40,12 @@ export default function PaySplit({
     }
     try {
       const stroops = toStroops(amount);
-      previewPayout(BigInt(splitId), stroops).then((parts) => {
+      if (selected) {
+        const parts = localPreviewPayout(selected.shares, stroops);
         if (active) setPreview(parts);
-      });
+      } else {
+        setPreview([]);
+      }
     } catch (e) {
       if (active) {
         setPreview([]);
@@ -52,7 +55,7 @@ export default function PaySplit({
     return () => {
       active = false;
     };
-  }, [splitId, amount]);
+  }, [splitId, amount, selected]);
 
   async function submit() {
     if (!wallet) {

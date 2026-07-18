@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toStroops, ConversionError } from "./tributary";
+import { toStroops, ConversionError, localPreviewPayout } from "./tributary";
 
 describe("toStroops", () => {
   it("converts a whole number", () => {
@@ -54,5 +54,25 @@ describe("toStroops", () => {
 
   it("rejects bare decimal point", () => {
     expect(() => toStroops(".")).toThrow(ConversionError);
+  });
+});
+
+describe("localPreviewPayout", () => {
+  it("splits equally among recipients", () => {
+    const shares = [5000, 5000];
+    const amount = 1000n;
+    expect(localPreviewPayout(shares, amount)).toEqual([500n, 500n]);
+  });
+
+  it("assigns remainder dust to the last recipient", () => {
+    const shares = [3333, 3333, 3334];
+    const amount = 100n;
+    // 33.33 -> 33, 33.33 -> 33, last gets remainder: 100 - 66 = 34
+    expect(localPreviewPayout(shares, amount)).toEqual([33n, 33n, 34n]);
+  });
+
+  it("handles zero amount or empty shares gracefully", () => {
+    expect(localPreviewPayout([], 100n)).toEqual([]);
+    expect(localPreviewPayout([5000, 5000], 0n)).toEqual([]);
   });
 });

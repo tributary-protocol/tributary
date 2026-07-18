@@ -102,6 +102,29 @@ export async function previewPayout(
   return result.isErr() ? [] : [...result.unwrap()];
 }
 
+export function localPreviewPayout(
+  shares: number[],
+  amount: bigint,
+): bigint[] {
+  if (shares.length === 0 || amount <= 0n) {
+    return [];
+  }
+  const parts: bigint[] = [];
+  let assigned = 0n;
+  const totalShares = 10000n;
+  const lastIndex = shares.length - 1;
+  for (let i = 0; i < shares.length; i++) {
+    if (i === lastIndex) {
+      parts.push(amount - assigned);
+    } else {
+      const part = (amount * BigInt(shares[i])) / totalShares;
+      parts.push(part);
+      assigned += part;
+    }
+  }
+  return parts;
+}
+
 export interface ActivityItem {
   eventId: string;
   type: string;
