@@ -8,7 +8,8 @@
 extern crate alloc;
 
 use super::*;
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::storage::Persistent;
+use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{vec, Env, IntoVal};
 
 struct Setup {
@@ -94,6 +95,67 @@ fn rejects_invalid_splits() {
         &None,
     );
     assert_eq!(bad_total, Err(Ok(Error::BadShareTotal)));
+}
+
+#[test]
+fn create_split_extends_creator_index_ttl() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    let index_key = DataKey::Created(creator.clone());
+    let ttl = s.env.as_contract(&s.client.address, || {
+        s.env.storage().persistent().get_ttl(&index_key)
+    });
+    assert_eq!(ttl, TTL_EXTEND_TO);
+}
+
+#[test]
+fn splits_of_renews_creator_index_ttl_on_read() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    let index_key = DataKey::Created(creator.clone());
+    let ttl_initial = s.env.as_contract(&s.client.address, || {
+        s.env.storage().persistent().get_ttl(&index_key)
+    });
+    assert!(ttl_initial >= TTL_EXTEND_TO.saturating_sub(1));
+    assert!(ttl_initial <= TTL_EXTEND_TO);
+
+    let sequence = s.env.ledger().sequence();
+    s.env
+        .ledger()
+        .set_sequence_number(sequence + (TTL_EXTEND_TO - TTL_THRESHOLD + 1));
+
+    let ttl_mid = s.env.as_contract(&s.client.address, || {
+        s.env.storage().persistent().get_ttl(&index_key)
+    });
+    assert!(ttl_mid > 0);
+    assert!(ttl_mid < TTL_THRESHOLD);
+
+    let splits = s.client.splits_of(&creator);
+    assert_eq!(splits, vec![&s.env, 0]);
+
+    let ttl_after = s.env.as_contract(&s.client.address, || {
+        s.env.storage().persistent().get_ttl(&index_key)
+    });
+    assert!(ttl_after >= TTL_EXTEND_TO.saturating_sub(1));
+    assert!(ttl_after <= TTL_EXTEND_TO);
 }
 
 #[test]

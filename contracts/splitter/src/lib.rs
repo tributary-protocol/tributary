@@ -202,6 +202,9 @@ impl Splitter {
             .unwrap_or_else(|| Vec::new(&env));
         created.push_back(id);
         env.storage().persistent().set(&index_key, &created);
+        env.storage()
+            .persistent()
+            .extend_ttl(&index_key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
         SplitCreated { id, creator }.publish(&env);
         Ok(id)
@@ -530,19 +533,12 @@ impl Splitter {
 
     #[must_use]
     pub fn splits_of(env: Env, creator: Address) -> Vec<u64> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Created(creator))
-            .unwrap_or_else(|| Vec::new(&env))
+        load_created(&env, &creator)
     }
 
     #[must_use]
     pub fn splits_of_paged(env: Env, creator: Address, start: u32, limit: u32) -> Vec<u64> {
-        let all: Vec<u64> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Created(creator))
-            .unwrap_or_else(|| Vec::new(&env));
+        let all: Vec<u64> = load_created(&env, &creator);
         let len = all.len();
         if start >= len || limit == 0 {
             return Vec::new(&env);
@@ -560,11 +556,7 @@ impl Splitter {
 
     #[must_use]
     pub fn splits_of_count(env: Env, creator: Address) -> u32 {
-        let all: Vec<u64> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Created(creator))
-            .unwrap_or_else(|| Vec::new(&env));
+        let all: Vec<u64> = load_created(&env, &creator);
         all.len()
     }
 
@@ -578,6 +570,18 @@ impl Splitter {
         env.storage()
             .persistent()
             .get(&DataKey::PendingController(id))
+    }
+}
+
+fn load_created(env: &Env, creator: &Address) -> Vec<u64> {
+    let key = DataKey::Created(creator.clone());
+    if let Some(created) = env.storage().persistent().get(&key) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        created
+    } else {
+        Vec::new(env)
     }
 }
 
