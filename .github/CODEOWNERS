@@ -1,5 +1,26 @@
-# Fallback reviewers for everything
+# CODEOWNERS – auto-assigns reviewers by project area.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Fallback – if a file doesn't match a more specific rule, this applies.
 * @spagero763
 
-# Money-moving code gets extra scrutiny
+# Smart contract – core splitting logic (Rust / Soroban).
 /contracts/ @spagero763
+
+# TypeScript SDK – auto-generated client from the contract spec.
+/sdk/ @spagero763
+
+# Web dashboard – React + Vite + Freighter wallet integration.
+/app/ @spagero763
+
+# Indexer – off-chain event processor.
+/indexer/ @spagero763
+
+# Documentation – architecture, deployment, integration guides.
+/docs/ @spagero763
+
+# Build & deployment scripts.
+/scripts/ @spagero763
+
+# CI/CD workflows, issue templates, repo config.
+/.github/ @spagero763

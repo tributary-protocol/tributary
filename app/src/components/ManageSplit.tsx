@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { walletClient, SplitView, Recipient } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 import RecipientEditor, {
   Row,
   rowsError,
@@ -25,6 +26,7 @@ export default function ManageSplit({
   splits: SplitView[];
   onChanged: () => void;
 }) {
+  const { t } = useTranslation();
   const [splitId, setSplitId] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [transferTo, setTransferTo] = useState("");
@@ -35,7 +37,7 @@ export default function ManageSplit({
   const mine = splits.filter((s) => s.controller === wallet);
 
   const updateFee = useMemo(() => {
-    if (!wallet || splitId === "" || rowsError(rows)) return null;
+    if (!wallet || splitId === "" || rowsError(rows, t)) return null;
     return () =>
       walletClient(wallet).update_split({
         id: BigInt(splitId),
@@ -88,7 +90,7 @@ export default function ManageSplit({
   }
 
   async function update() {
-    const invalid = rowsError(rows);
+    const invalid = rowsError(rows, t);
     if (invalid) {
       setMessage(invalid);
       return;
@@ -100,13 +102,13 @@ export default function ManageSplit({
         shares: toShares(rows),
       });
       const { result } = await tx.signAndSend();
-      return result.isOk() ? "Split updated." : "Update rejected.";
+      return result.isOk() ? t("updateSuccess") : t("updateFailed");
     });
   }
 
   async function transfer() {
     if (!/^G[A-Z2-7]{55}$/.test(transferTo.trim())) {
-      setMessage("Controller must be a G… account key.");
+      setMessage(t("controllerFormatError"));
       return;
     }
     await run(async () => {
@@ -115,14 +117,14 @@ export default function ManageSplit({
         new_controller: transferTo.trim(),
       });
       const { result } = await tx.signAndSend();
-      return result.isOk() ? "Control transferred." : "Transfer rejected.";
+      return result.isOk() ? t("transferSuccess") : t("transferFailed");
     });
   }
 
   async function lock() {
     if (!confirmLock) {
       setConfirmLock(true);
-      setMessage("Locking is permanent. Press again to confirm.");
+      setMessage(t("lockConfirmPrompt"));
       return;
     }
     await run(async () => {
@@ -131,19 +133,19 @@ export default function ManageSplit({
         new_controller: undefined,
       });
       const { result } = await tx.signAndSend();
-      return result.isOk() ? "Split locked forever." : "Lock rejected.";
+      return result.isOk() ? t("lockSuccess") : t("lockFailed");
     });
   }
 
   return (
     <section className="card">
-      <h2>Manage your splits</h2>
+      <h2>{t("manageTitle")}</h2>
       <div className="row">
         <select value={splitId} onChange={(e) => select(e.target.value)}>
-          <option value="">Choose split you control</option>
+          <option value="">{t("chooseSplitControl")}</option>
           {mine.map((s) => (
             <option key={String(s.id)} value={String(s.id)}>
-              #{String(s.id)} · {s.recipients.length} recipients
+              #{String(s.id)} · {t("recipientsCount", { count: s.recipients.length })}
             </option>
           ))}
         </select>
@@ -151,27 +153,27 @@ export default function ManageSplit({
       {splitId !== "" && (
         <>
           <RecipientEditor rows={rows} onChange={setRows} />
-          <FeeHint assemble={updateFee} label="Estimated update fee" />
+          <FeeHint assemble={updateFee} labelKey="estimatedUpdateFee" />
           <div className="row">
             <button disabled={busy} onClick={update}>
-              Update split
+              {t("updateButton")}
             </button>
           </div>
           <div className="row">
             <input
-              placeholder="G… new controller"
+              placeholder={t("placeholderController")}
               value={transferTo}
               onChange={(e) => setTransferTo(e.target.value)}
             />
             <button className="ghost" disabled={busy} onClick={transfer}>
-              Transfer
+              {t("transferButton")}
             </button>
             <button className="ghost" disabled={busy} onClick={lock}>
-              {confirmLock ? "Confirm lock" : "Lock forever"}
+              {confirmLock ? t("confirmLockButton") : t("lockButton")}
             </button>
           </div>
-          <FeeHint assemble={transferFee} label="Estimated transfer fee" />
-          <FeeHint assemble={lockFee} label="Estimated lock fee" />
+          <FeeHint assemble={transferFee} labelKey="estimatedTransferFee" />
+          <FeeHint assemble={lockFee} labelKey="estimatedLockFee" />
         </>
       )}
       {message && <p className="note">{message}</p>}

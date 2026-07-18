@@ -6,7 +6,8 @@
   "description": "Polls splitter contract events into a local ndjson log",
   "license": "Apache-2.0",
   "scripts": {
-    "start": "node index.mjs"
+    "start": "node index.mjs",
+    "test": "node --test"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^14.5.0"

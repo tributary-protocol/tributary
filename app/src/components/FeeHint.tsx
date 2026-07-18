@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AssembledTx, feeStroops } from "../lib/fees";
 import { fromStroops } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 
 /**
  * Simulates the transaction the caller is about to sign and shows its fee.
@@ -8,11 +9,12 @@ import { fromStroops } from "../lib/tributary";
  */
 export default function FeeHint({
   assemble,
-  label = "Estimated fee",
+  labelKey = "estimatedFee",
 }: {
   assemble: (() => Promise<AssembledTx>) | null;
-  label?: string;
+  labelKey?: string;
 }) {
+  const { t } = useTranslation();
   const [fee, setFee] = useState<bigint | null>(null);
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export default function FeeHint({
   if (fee === null) return null;
   return (
     <p className="hint">
-      {label}: ~{fromStroops(fee)} XLM
+      {t(labelKey)}: ~{fromStroops(fee)} XLM
     </p>
   );
 }

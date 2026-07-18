@@ -8,6 +8,7 @@ import {
   TOKENS,
   SplitView,
 } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 import TokenPicker from "./TokenPicker";
 import FeeHint from "./FeeHint";
 
@@ -20,12 +21,14 @@ export default function PaySplit({
   splits: SplitView[];
   onPaid: () => void;
 }) {
+  const { t } = useTranslation();
   const [splitId, setSplitId] = useState("");
   const [amount, setAmount] = useState("");
   const [token, setToken] = useState(TOKENS[0]);
   const [preview, setPreview] = useState<bigint[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [amountError, setAmountError] = useState<string | null>(null);
 
   const selected = splits.find((s) => String(s.id) === splitId);
 
@@ -44,13 +47,22 @@ export default function PaySplit({
 
   useEffect(() => {
     let active = true;
+    setAmountError(null);
     if (splitId === "" || !amount || parseFloat(amount) <= 0) {
       setPreview([]);
       return;
     }
-    previewPayout(BigInt(splitId), toStroops(amount)).then((parts) => {
-      if (active) setPreview(parts);
-    });
+    try {
+      const stroops = toStroops(amount);
+      previewPayout(BigInt(splitId), stroops).then((parts) => {
+        if (active) setPreview(parts);
+      });
+    } catch (e) {
+      if (active) {
+        setPreview([]);
+        setAmountError(e instanceof Error ? e.message : String(e));
+      }
+    }
     return () => {
       active = false;
     };
@@ -58,11 +70,11 @@ export default function PaySplit({
 
   async function submit() {
     if (!wallet) {
-      setMessage("Connect your wallet first.");
+      setMessage(t("connectWalletFirst"));
       return;
     }
     if (splitId === "" || !amount) {
-      setMessage("Pick a split and an amount.");
+      setMessage(t("pickSplitAndAmount"));
       return;
     }
     setBusy(true);
@@ -78,8 +90,8 @@ export default function PaySplit({
       const { result } = await tx.signAndSend();
       setMessage(
         result.isOk()
-          ? `Paid ${amount} ${token.code} through split #${splitId}.`
-          : "Payment failed.",
+          ? t("paySuccess", { amount, token: token.code, id: splitId })
+          : t("payFailed"),
       );
       onPaid();
     } catch (e) {
@@ -91,13 +103,13 @@ export default function PaySplit({
 
   return (
     <section className="card">
-      <h2>Pay through a split</h2>
+      <h2>{t("payTitle")}</h2>
       <div className="row">
         <select value={splitId} onChange={(e) => setSplitId(e.target.value)}>
-          <option value="">Choose split</option>
+          <option value="">{t("chooseSplit")}</option>
           {splits.map((s) => (
             <option key={String(s.id)} value={String(s.id)}>
-              #{String(s.id)} · {s.recipients.length} recipients
+              #{String(s.id)} · {t("recipientsCount", { count: s.recipients.length })}
             </option>
           ))}
         </select>
@@ -107,12 +119,13 @@ export default function PaySplit({
           type="number"
           min="0"
           step="0.0000001"
-          placeholder="Amount"
+          placeholder={t("amount")}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
         <TokenPicker token={token} onChange={setToken} />
       </div>
+      {amountError && <p className="note">{amountError}</p>}
       {selected && preview.length === selected.recipients.length && (
         <ul className="preview">
           {selected.recipients.map((r, i) => (
@@ -126,8 +139,8 @@ export default function PaySplit({
         </ul>
       )}
       <FeeHint assemble={assembleFee} />
-      <button disabled={busy} onClick={submit}>
-        {busy ? "Waiting for signature…" : "Pay"}
+      <button disabled={busy || !!amountError} onClick={submit}>
+        {busy ? t("waitingForSignature") : t("payButton")}
       </button>
       {message && <p className="note">{message}</p>}
     </section>
