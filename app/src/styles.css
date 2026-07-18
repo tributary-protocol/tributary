@@ -276,6 +276,10 @@ button.small {
   flex-wrap: wrap;
 }
 
+.csv-input {
+  display: none;
+}
+
 .check {
   display: flex;
   align-items: center;
