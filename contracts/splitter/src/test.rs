@@ -1,4 +1,3 @@
-#![cfg(test)]
 extern crate alloc;
 use super::*;
 use soroban_sdk::testutils::{Address as _, Events};
@@ -1003,4 +1002,91 @@ fn immutable_split_cannot_be_updated() {
         .client
         .try_update_split(&id, &vec![&s.env, acct(&b)], &vec![&s.env, 10_000]);
     assert_eq!(result, Err(Ok(Error::SplitImmutable)));
+}
+
+// #109: randomized conservation fuzz test using the in-harness test PRNG.
+// Generates many random (shares, amount) combinations and asserts that the
+// splitter conserves funds: amount-in == amount-out, with no panic/wrap.
+#[test]
+fn conservation_holds_across_random_splits() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    const ITERATIONS: u32 = 256;
+
+    // Seed the in-harness PRNG once so that successive iterations draw
+    // DIFFERENT pseudo-random inputs (re-seeding each iteration would make
+    // every case identical and defeat the fuzzing).
+    s.env.as_contract(&s.client.address, || {
+        s.env
+            .prng()
+            .seed(soroban_sdk::Bytes::from_array(&s.env, &[42; 32]));
+    });
+
+    for _ in 0..ITERATIONS {
+        // Generate random inputs (prng requires a contract context).
+        let generated = s.env.as_contract(&s.client.address, || {
+            let n: u64 = s.env.prng().gen::<u64>() % 8 + 2;
+            let n = n as usize;
+
+            let mut weights: alloc::vec::Vec<u64> = alloc::vec::Vec::new();
+            let mut total: u64 = 0;
+            for _ in 0..n {
+                let w: u64 = s.env.prng().gen::<u64>() % 10_000 + 1;
+                weights.push(w);
+                total += w;
+            }
+
+            let mut shares_vec: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&s.env);
+            let mut running: u32 = 0;
+            for (i, w) in weights.iter().enumerate() {
+                let norm = if i + 1 == n {
+                    10_000 - running
+                } else {
+                    let v = ((*w * 10_000 / total) as u32).max(1);
+                    if running + v > 10_000 {
+                        10_000 - running
+                    } else {
+                        v
+                    }
+                };
+                shares_vec.push_back(norm);
+                running += norm;
+            }
+            if running != 10_000 {
+                return None;
+            }
+
+            let mut recipients_vec: soroban_sdk::Vec<Recipient> = soroban_sdk::Vec::new(&s.env);
+            let mut addrs_vec: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&s.env);
+            for _ in 0..n {
+                let addr = Address::generate(&s.env);
+                recipients_vec.push_back(acct(&addr));
+                addrs_vec.push_back(addr);
+            }
+
+            let amount_raw: u64 = s.env.prng().gen::<u64>();
+            let mut amount: i128 = (amount_raw % (i128::MAX as u64)) as i128;
+            if amount <= 0 {
+                amount = 1;
+            }
+            Some((shares_vec, recipients_vec, addrs_vec, amount))
+        });
+
+        let (shares, recipients, addrs, amount) = match generated {
+            Some(v) => v,
+            None => continue,
+        };
+
+        let id = s.client.create_split(&creator, &recipients, &shares, &None);
+
+        let payer = Address::generate(&s.env);
+        let (token_id, token_client) = fund_token(&s.env, &payer, amount);
+        s.client.pay(&payer, &id, &token_id, &amount);
+
+        let mut received: i128 = 0;
+        for addr in addrs.iter() {
+            received += token_client.balance(&addr);
+        }
+        assert_eq!(received, amount, "conservation broken for random split");
+    }
 }

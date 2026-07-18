@@ -28,6 +28,7 @@ export default function PaySplit({
   const [preview, setPreview] = useState<bigint[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [amountError, setAmountError] = useState<string | null>(null);
 
   const selected = splits.find((s) => String(s.id) === splitId);
 
@@ -46,13 +47,22 @@ export default function PaySplit({
 
   useEffect(() => {
     let active = true;
+    setAmountError(null);
     if (splitId === "" || !amount || parseFloat(amount) <= 0) {
       setPreview([]);
       return;
     }
-    previewPayout(BigInt(splitId), toStroops(amount)).then((parts) => {
-      if (active) setPreview(parts);
-    });
+    try {
+      const stroops = toStroops(amount);
+      previewPayout(BigInt(splitId), stroops).then((parts) => {
+        if (active) setPreview(parts);
+      });
+    } catch (e) {
+      if (active) {
+        setPreview([]);
+        setAmountError(e instanceof Error ? e.message : String(e));
+      }
+    }
     return () => {
       active = false;
     };
@@ -115,6 +125,7 @@ export default function PaySplit({
         />
         <TokenPicker token={token} onChange={setToken} />
       </div>
+      {amountError && <p className="note">{amountError}</p>}
       {selected && preview.length === selected.recipients.length && (
         <ul className="preview">
           {selected.recipients.map((r, i) => (
@@ -127,8 +138,7 @@ export default function PaySplit({
           ))}
         </ul>
       )}
-      <FeeHint assemble={assembleFee} />
-      <button disabled={busy} onClick={submit}>
+      <button disabled={busy || !!amountError} onClick={submit}>
         {busy ? t("waitingForSignature") : t("payButton")}
       </button>
       {message && <p className="note">{message}</p>}
