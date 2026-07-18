@@ -13,3 +13,7 @@ Valid reports get credited in the release notes once a fix ships, if you want th
 - `contracts/splitter`: highest severity, anything that misroutes, locks or loses funds
 - `sdk` and `app`: transaction construction bugs that could trick a signer
 - Infrastructure (CI, deploy scripts): supply chain concerns
+
+## Threat Model & Security Architecture
+
+For detailed information on trust assumptions, escrow risks, token assumptions, and known limitations, please refer to the [Security & Threat Model](file:///c:/Users/ACER/tributary/docs/security-threat-model.md) documentation.
