@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { rpc, scValToNative } from "@stellar/stellar-sdk";
 import { withRateLimitBackoff } from "./rpc-backoff.mjs";
 
@@ -75,7 +76,7 @@ function cursorLedger(cursor) {
 
 let isPolling = false;
 let shutdownRequested = false;
-let intervalId;
+let pollingTimerId;
 let backoffTimeoutId;
 let resumeBackoff;
 
@@ -104,8 +105,9 @@ function rpcCall(operation) {
 function handleShutdown(signal) {
   console.log(`Received ${signal}. Shutting down gracefully...`);
   shutdownRequested = true;
-  if (intervalId) {
-    clearInterval(intervalId);
+  if (pollingTimerId) {
+    clearTimeout(pollingTimerId);
+    pollingTimerId = undefined;
   }
   if (backoffTimeoutId) {
     clearTimeout(backoffTimeoutId);
@@ -173,6 +175,34 @@ async function poll() {
   }
 }
 
-console.log(`indexing ${CONTRACT_ID} from ${RPC_URL} every ${POLL_MS}ms`);
-await poll();
-intervalId = setInterval(() => poll().catch((e) => console.error(e.message ?? e)), POLL_MS);
+export async function runPollingLoop({
+  pollFn = poll,
+  pollMs = POLL_MS,
+  schedule = (callback, delay) => {
+    pollingTimerId = setTimeout(callback, delay);
+    return pollingTimerId;
+  },
+  logger = (message) => console.error(message),
+} = {}) {
+  try {
+    await pollFn();
+  } catch (error) {
+    logger(error.message ?? error);
+  }
+
+  if (shutdownRequested) {
+    return;
+  }
+
+  schedule(() => {
+    void runPollingLoop({ pollFn, pollMs, schedule, logger });
+  }, pollMs);
+}
+
+const shouldStartPolling =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (shouldStartPolling) {
+  console.log(`indexing ${CONTRACT_ID} from ${RPC_URL} every ${POLL_MS}ms`);
+  void runPollingLoop();
+}
