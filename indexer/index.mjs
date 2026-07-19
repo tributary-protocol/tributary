@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { rpc, scValToNative } from "@stellar/stellar-sdk";
+import { withRateLimitBackoff } from "./rpc-backoff.mjs";
 
 const DEFAULT_RPC_URL = "https://soroban-testnet.stellar.org";
 const DEFAULT_CONTRACT_ID =
@@ -32,6 +33,8 @@ const { RPC_URL, CONTRACT_ID } = config.value;
 const OUT = process.env.OUT ?? "events.ndjson";
 const STATE = process.env.STATE ?? "state.json";
 const POLL_MS = Number(process.env.POLL_MS ?? 10_000);
+const BACKOFF_INITIAL_MS = Number(process.env.BACKOFF_INITIAL_MS ?? 1_000);
+const BACKOFF_MAX_MS = Number(process.env.BACKOFF_MAX_MS ?? 60_000);
 
 const server = new rpc.Server(RPC_URL);
 
@@ -73,12 +76,42 @@ function cursorLedger(cursor) {
 let isPolling = false;
 let shutdownRequested = false;
 let intervalId;
+let backoffTimeoutId;
+let resumeBackoff;
+
+function sleepUnlessShuttingDown(delayMs) {
+  return new Promise((resolve) => {
+    resumeBackoff = resolve;
+    backoffTimeoutId = setTimeout(() => {
+      backoffTimeoutId = undefined;
+      resumeBackoff = undefined;
+      resolve();
+    }, delayMs);
+  });
+}
+
+function rpcCall(operation) {
+  return withRateLimitBackoff(operation, {
+    initialDelayMs: BACKOFF_INITIAL_MS,
+    maxDelayMs: BACKOFF_MAX_MS,
+    sleep: sleepUnlessShuttingDown,
+    shouldStop: () => shutdownRequested,
+    onBackoff: (_error, delayMs) =>
+      console.warn(`RPC rate limited; retrying in ${delayMs}ms`),
+  });
+}
 
 function handleShutdown(signal) {
   console.log(`Received ${signal}. Shutting down gracefully...`);
   shutdownRequested = true;
   if (intervalId) {
     clearInterval(intervalId);
+  }
+  if (backoffTimeoutId) {
+    clearTimeout(backoffTimeoutId);
+    backoffTimeoutId = undefined;
+    resumeBackoff?.();
+    resumeBackoff = undefined;
   }
   if (!isPolling) {
     console.log("State flushed. Exiting cleanly.");
@@ -101,18 +134,22 @@ async function poll() {
   try {
     for (;;) {
       if (shutdownRequested) break;
-      const request = cursor
-        ? { cursor, filters, limit: 100 }
-        : {
-            startLedger: Math.max(
-              1,
-              (await server.getLatestLedger()).sequence - 100_000,
-            ),
-            filters,
-            limit: 100,
-          };
+      let request;
+      if (cursor) {
+        request = { cursor, filters, limit: 100 };
+      } else {
+        const latestLedger = await rpcCall(() => server.getLatestLedger());
+        if (!latestLedger) break;
+        request = {
+          startLedger: Math.max(1, latestLedger.sequence - 100_000),
+          filters,
+          limit: 100,
+        };
+      }
 
-      const res = await server.getEvents(request);
+      if (shutdownRequested) break;
+      const res = await rpcCall(() => server.getEvents(request));
+      if (!res) break;
       for (const ev of res.events) {
         appendFileSync(OUT, JSON.stringify(decode(ev)) + "\n");
       }
