@@ -1,19 +1,23 @@
 import { AnimatePresence, motion } from "motion/react";
 import { fromStroops, tokenCode, ActivityItem, EXPLORER } from "../lib/tributary";
-import { useTranslation } from "../lib/i18n";
+import { usePagination } from "../lib/usePagination";
+
+export const PAGE_SIZE = 10;
+
+const LABELS: Record<string, string> = {
+  split_created: "created",
+  split_paid: "paid",
+  split_updated: "updated",
+  deposited: "deposit",
+  distributed: "distributed",
+  control_transferred: "control moved",
+};
 
 export default function Activity({ items }: { items: ActivityItem[] }) {
   const { t } = useTranslation();
   if (items.length === 0) return null;
 
-  const LABELS: Record<string, string> = {
-    split_created: t("activityCreated"),
-    split_paid: t("activityPaid"),
-    split_updated: t("activityUpdated"),
-    deposited: t("activityDeposit"),
-    distributed: t("activityDistributed"),
-    control_transferred: t("activityControlMoved"),
-  };
+  const { page, pageIndex, pageCount, next, prev } = usePagination(items, PAGE_SIZE);
 
   const exportCSV = () => {
     const header = "eventId,type,id,amount,token,ledger,txHash";
@@ -44,7 +48,7 @@ export default function Activity({ items }: { items: ActivityItem[] }) {
       <button onClick={exportCSV}>{t("exportCsv")}</button>
       <ul>
         <AnimatePresence initial={false}>
-          {items.map((item) => (
+          {page.map((item) => (
             <motion.li
               key={item.eventId}
               layout
@@ -70,6 +74,27 @@ export default function Activity({ items }: { items: ActivityItem[] }) {
           ))}
         </AnimatePresence>
       </ul>
+      {pageCount > 1 && (
+        <div className="activity-pager">
+          <button
+            className="ghost small"
+            disabled={pageIndex === 0}
+            onClick={prev}
+          >
+            ← Prev
+          </button>
+          <span>
+            Page {pageIndex + 1} of {pageCount}
+          </span>
+          <button
+            className="ghost small"
+            disabled={pageIndex === pageCount - 1}
+            onClick={next}
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </motion.section>
   );
 }
