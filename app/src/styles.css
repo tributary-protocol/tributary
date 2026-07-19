@@ -548,6 +548,63 @@ select.lang-select:focus {
   text-decoration: underline;
 }
 
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.error-boundary-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 36px 32px;
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+}
+
+.error-boundary-icon {
+  font-size: 40px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.error-boundary-card h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+
+.error-boundary-card p {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.error-boundary-detail {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 12px 14px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: left;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  margin-bottom: 20px;
+}
+
+.error-boundary-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;
