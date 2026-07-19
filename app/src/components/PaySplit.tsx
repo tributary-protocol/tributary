@@ -28,6 +28,7 @@ export default function PaySplit({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [amountError, setAmountError] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const selected = splits.find((s) => String(s.id) === splitId);
 
@@ -54,7 +55,20 @@ export default function PaySplit({
     };
   }, [splitId, amount]);
 
+  function handlePayClick() {
+    if (!wallet) {
+      setMessage(t("connectWalletFirst"));
+      return;
+    }
+    if (splitId === "" || !amount) {
+      setMessage(t("pickSplitAndAmount"));
+      return;
+    }
+    setShowConfirm(true);
+  }
+
   async function submit() {
+    setShowConfirm(false);
     if (!wallet) {
       setMessage(t("connectWalletFirst"));
       return;
@@ -124,10 +138,59 @@ export default function PaySplit({
           ))}
         </ul>
       )}
-      <button disabled={busy || !!amountError} onClick={submit}>
+      <button disabled={busy || !!amountError || splitId === "" || !amount} onClick={handlePayClick}>
         {busy ? t("waitingForSignature") : t("payButton")}
       </button>
       {message && <p className="note">{message}</p>}
+
+      {showConfirm && selected && preview.length === selected.recipients.length && (
+        <div className="modal-overlay" data-testid="confirm-dialog">
+          <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <h3 id="confirm-title">{t("confirmPaymentTitle")}</h3>
+            <p className="message">{t("confirmPaymentPrompt")}</p>
+            
+            <div
+              style={{
+                fontSize: "13px",
+                fontWeight: "650",
+                borderBottom: "1px solid var(--line)",
+                paddingBottom: "8px",
+                justifyContent: "space-between",
+                display: "flex",
+                marginTop: "4px",
+              }}
+            >
+              <span>{t("recipient")}</span>
+              <span>{t("payoutAmount")}</span>
+            </div>
+            
+            <ul className="preview" style={{ maxHeight: "200px", overflowY: "auto", margin: 0, padding: 0 }}>
+              {selected.recipients.map((r, i) => (
+                <li key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: "13px" }}>
+                  <span style={{ fontFamily: "monospace" }}>{recipientLabel(r)}</span>
+                  <span>
+                    {fromStroops(preview[i])} {token.code}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            
+            <div className="modal-actions">
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                style={{ background: "transparent", color: "var(--text)", border: "1px solid var(--line)" }}
+              >
+                {t("cancel")}
+              </button>
+              <button type="button" onClick={submit}>
+                {t("confirmAndPay")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
