@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::missing_errors_doc, clippy::needless_pass_by_value)]
 //! Splits incoming payments between recipients by fixed basis-point shares.
 //!
 //! A split routes to accounts or to other splits. Payments either go straight
@@ -39,7 +40,7 @@ pub enum Error {
     /// Code 3. A share value is `0`.
     /// Raised by `create_split` and `update_split` (via `validate`).
     ZeroShare = 3,
-    /// Code 4. Shares do not sum to `TOTAL_SHARES` (10_000), or the sum
+    /// Code 4. Shares do not sum to `TOTAL_SHARES` (`10_000`), or the sum
     /// overflows `u32`.
     /// Raised by `create_split` and `update_split` (via `validate`).
     BadShareTotal = 4,
@@ -65,10 +66,12 @@ pub enum Error {
     /// Raised by `create_split` and `update_split` (via `validate`).
     BadChildSplit = 10,
     /// An arithmetic path produced a value that does not fit the i128 the
-    /// contract stores. Can only happen if a share exceeds TOTAL_SHARES, which
+    /// contract stores. Can only happen if a share exceeds `TOTAL_SHARES`, which
     /// `validate` forbids, but we surface it as a typed error rather than panic.
     ArithmeticOverflow = 11,
     SplitHasBalance = 12,
+    /// Calling `accept_control` on a split that has no pending transfer.
+    NoPendingTransfer = 13,
 }
 
 #[contracttype]
@@ -94,6 +97,7 @@ enum DataKey {
     Balance(u64, Address),
     Created(Address),
     HeldTokens(u64),
+    PendingController(u64),
 }
 
 #[contractevent]
@@ -129,6 +133,14 @@ pub struct SplitClosed {
 
 #[contractevent]
 #[derive(Clone)]
+pub struct ControlTransferProposed {
+    #[topic]
+    pub id: u64,
+    pub new_controller: Address,
+}
+
+#[contractevent]
+#[derive(Clone)]
 pub struct ControlTransferred {
     #[topic]
     pub id: u64,
@@ -159,7 +171,7 @@ pub struct Splitter;
 #[contractimpl]
 impl Splitter {
     /// Registers a new split and returns its id. Shares are basis points
-    /// and must sum to exactly 10_000. Passing a controller makes the
+    /// and must sum to exactly `10_000`. Passing a controller makes the
     /// split mutable by that address; passing None locks it forever.
     pub fn create_split(
         env: Env,
@@ -306,19 +318,90 @@ impl Splitter {
         Ok(())
     }
 
-    /// Hands control of a mutable split to another address, or locks it
-    /// forever when the new controller is None.
+    /// Proposes transferring control to a new address (two-step), or locks the
+    /// split forever when `new_controller` is `None`.
+    ///
+    /// When `Some(addr)`, a pending controller is recorded and `accept_control`
+    /// must be called by that address to finalise the handover. The current
+    /// controller can cancel the proposal with `cancel_transfer`.
+    ///
+    /// When `None`, control is renounced immediately and irreversibly.
     pub fn transfer_control(
         env: Env,
         id: u64,
         new_controller: Option<Address>,
     ) -> Result<(), Error> {
-        let mut split = load(&env, id)?;
+        let split = load(&env, id)?;
         let controller = split.controller.clone().ok_or(Error::SplitImmutable)?;
         controller.require_auth();
-        split.controller = new_controller.clone();
+
+        match new_controller {
+            None => {
+                // Renounce immediately — no recovery possible.
+                let mut split = split;
+                split.controller = None;
+                env.storage().persistent().set(&DataKey::Split(id), &split);
+                ControlTransferred {
+                    id,
+                    new_controller: None,
+                }
+                .publish(&env);
+            }
+            Some(addr) => {
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::PendingController(id), &addr);
+                env.storage().persistent().extend_ttl(
+                    &DataKey::PendingController(id),
+                    TTL_THRESHOLD,
+                    TTL_EXTEND_TO,
+                );
+                ControlTransferProposed {
+                    id,
+                    new_controller: addr,
+                }
+                .publish(&env);
+            }
+        }
+        Ok(())
+    }
+
+    /// Accepts a pending control transfer. Only the proposed controller may
+    /// call this, after which they become the split's controller.
+    pub fn accept_control(env: Env, id: u64) -> Result<(), Error> {
+        let pending = env
+            .storage()
+            .persistent()
+            .get::<_, Address>(&DataKey::PendingController(id))
+            .ok_or(Error::NoPendingTransfer)?;
+
+        pending.require_auth();
+
+        let mut split = load(&env, id)?;
+        split.controller = Some(pending.clone());
         env.storage().persistent().set(&DataKey::Split(id), &split);
-        ControlTransferred { id, new_controller }.publish(&env);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingController(id));
+
+        ControlTransferred {
+            id,
+            new_controller: Some(pending),
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Cancels a pending control transfer. Only the current controller may
+    /// call this. Does nothing if no transfer is pending.
+    pub fn cancel_transfer(env: Env, id: u64) -> Result<(), Error> {
+        let split = load(&env, id)?;
+        let controller = split.controller.clone().ok_or(Error::SplitImmutable)?;
+        controller.require_auth();
+
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingController(id));
         Ok(())
     }
 
@@ -335,6 +418,9 @@ impl Splitter {
         }
 
         env.storage().persistent().remove(&DataKey::Split(id));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingController(id));
         SplitClosed { id }.publish(&env);
         Ok(())
     }
@@ -422,6 +508,7 @@ impl Splitter {
         amounts(&env, &split, amount)
     }
 
+    #[must_use]
     pub fn balance(env: Env, id: u64, token: Address) -> i128 {
         env.storage()
             .persistent()
@@ -433,6 +520,7 @@ impl Splitter {
         load(&env, id)
     }
 
+    #[must_use]
     pub fn held_tokens(env: Env, id: u64) -> Vec<Address> {
         env.storage()
             .persistent()
@@ -440,6 +528,7 @@ impl Splitter {
             .unwrap_or_else(|| Vec::new(&env))
     }
 
+    #[must_use]
     pub fn splits_of(env: Env, creator: Address) -> Vec<u64> {
         env.storage()
             .persistent()
@@ -447,6 +536,7 @@ impl Splitter {
             .unwrap_or_else(|| Vec::new(&env))
     }
 
+    #[must_use]
     pub fn splits_of_paged(env: Env, creator: Address, start: u32, limit: u32) -> Vec<u64> {
         let all: Vec<u64> = env
             .storage()
@@ -468,6 +558,7 @@ impl Splitter {
         page
     }
 
+    #[must_use]
     pub fn splits_of_count(env: Env, creator: Address) -> u32 {
         let all: Vec<u64> = env
             .storage()
@@ -477,8 +568,16 @@ impl Splitter {
         all.len()
     }
 
+    #[must_use]
     pub fn split_count(env: Env) -> u64 {
         env.storage().instance().get(&DataKey::Count).unwrap_or(0)
+    }
+
+    #[must_use]
+    pub fn pending_controller(env: Env, id: u64) -> Option<Address> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PendingController(id))
     }
 }
 
@@ -522,7 +621,7 @@ fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
     let mut out = Vec::new(env);
     let last = split.recipients.len() - 1;
     let mut assigned: i128 = 0;
-    let total = I256::from_i128(env, TOTAL_SHARES as i128);
+    let total = I256::from_i128(env, i128::from(TOTAL_SHARES));
     for i in 0..split.recipients.len() {
         let part = if i == last {
             amount - assigned
@@ -531,8 +630,10 @@ fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
             // (custom high-supply tokens) before the division brings it back
             // into range. Compute the intermediate in 256-bit space so any
             // valid i128 amount stays panic- and wrap-free.
-            let product = I256::from_i128(env, amount)
-                .mul(&I256::from_i128(env, split.shares.get_unchecked(i) as i128));
+            let product = I256::from_i128(env, amount).mul(&I256::from_i128(
+                env,
+                i128::from(split.shares.get_unchecked(i)),
+            ));
             let part_i256 = product.div(&total);
             part_i256.to_i128().ok_or(Error::ArithmeticOverflow)?
         };
