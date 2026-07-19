@@ -85,7 +85,8 @@ export default function ManageSplit({
   }
 
   async function transfer() {
-    if (!/^G[A-Z2-7]{55}$/.test(transferTo.trim())) {
+    const to = transferTo.trim();
+    if (!/^G[A-Z2-7]{55}$/.test(to)) {
       setMessage(t("controllerFormatError"));
       return;
     }
@@ -100,7 +101,9 @@ export default function ManageSplit({
         new_controller: to,
       });
       const { result } = await tx.signAndSend();
-      return result.isOk() ? t("transferSuccess") : t("transferFailed");
+      if (!result.isOk()) return t("transferFailed");
+      clearSelection();
+      return t("transferSuccess");
     });
   }
 
@@ -110,13 +113,16 @@ export default function ManageSplit({
       setMessage(t("lockConfirmPrompt"));
       return;
     }
+    const id = splitId;
     await run(async () => {
       const tx = await walletClient(wallet!).transfer_control({
         id: BigInt(id),
         new_controller: undefined,
       });
       const { result } = await tx.signAndSend();
-      return result.isOk() ? t("lockSuccess") : t("lockFailed");
+      if (!result.isOk()) return t("lockFailed");
+      clearSelection();
+      return t("lockSuccess");
     });
     setConfirmLock(false);
   }
