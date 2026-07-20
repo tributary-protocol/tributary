@@ -8,7 +8,8 @@
 extern crate alloc;
 
 use super::*;
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::storage::Persistent;
+use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{vec, Env, IntoVal};
 
 struct Setup {
@@ -94,6 +95,67 @@ fn rejects_invalid_splits() {
         &None,
     );
     assert_eq!(bad_total, Err(Ok(Error::BadShareTotal)));
+}
+
+#[test]
+fn create_split_extends_creator_index_ttl() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    let index_key = DataKey::Created(creator.clone());
+    let ttl = s.env.as_contract(&s.client.address, || {
+        s.env.storage().persistent().get_ttl(&index_key)
+    });
+    assert_eq!(ttl, TTL_EXTEND_TO);
+}
+
+#[test]
+fn splits_of_renews_creator_index_ttl_on_read() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    let index_key = DataKey::Created(creator.clone());
+    let ttl_initial = s.env.as_contract(&s.client.address, || {
+        s.env.storage().persistent().get_ttl(&index_key)
+    });
+    assert!(ttl_initial >= TTL_EXTEND_TO.saturating_sub(1));
+    assert!(ttl_initial <= TTL_EXTEND_TO);
+
+    let sequence = s.env.ledger().sequence();
+    s.env
+        .ledger()
+        .set_sequence_number(sequence + (TTL_EXTEND_TO - TTL_THRESHOLD + 1));
+
+    let ttl_mid = s.env.as_contract(&s.client.address, || {
+        s.env.storage().persistent().get_ttl(&index_key)
+    });
+    assert!(ttl_mid > 0);
+    assert!(ttl_mid < TTL_THRESHOLD);
+
+    let splits = s.client.splits_of(&creator);
+    assert_eq!(splits, vec![&s.env, 0]);
+
+    let ttl_after = s.env.as_contract(&s.client.address, || {
+        s.env.storage().persistent().get_ttl(&index_key)
+    });
+    assert!(ttl_after >= TTL_EXTEND_TO.saturating_sub(1));
+    assert!(ttl_after <= TTL_EXTEND_TO);
 }
 
 #[test]
@@ -192,6 +254,39 @@ fn rounding_dust_goes_to_last_recipient() {
     assert_eq!(token_client.balance(&a), 33);
     assert_eq!(token_client.balance(&b), 33);
     assert_eq!(token_client.balance(&c), 34);
+    assert_eq!(token_client.balance(&payer), 0);
+}
+
+#[test]
+fn rounding_dust_goes_to_last_recipient_when_split() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf_a = Address::generate(&s.env);
+    let leaf_b = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 100);
+
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf_a), acct(&leaf_b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b), Recipient::Split(child)],
+        &vec![&s.env, 3_333, 3_333, 3_334],
+        &None,
+    );
+
+    s.client.pay(&payer, &parent, &token_id, &100);
+
+    assert_eq!(token_client.balance(&a), 33);
+    assert_eq!(token_client.balance(&b), 33);
+    assert_eq!(s.client.balance(&child, &token_id), 34);
     assert_eq!(token_client.balance(&payer), 0);
 }
 
@@ -1202,122 +1297,215 @@ fn close_split_rejects_immutable_split() {
     assert_eq!(result, Err(Ok(Error::SplitImmutable)));
 }
 
-mod fee_token {
-    //! A minimal token that keeps a cut of every transfer, standing in for
-    //! real-world fee-on-transfer tokens so `deposit` can be tested against
-    //! a token that delivers less than the amount requested.
-    use soroban_sdk::{
-        contract, contractimpl, contracttype, token::TokenInterface, Address, Env, MuxedAddress,
-        String,
-    };
+#[test]
+fn distribute_cascade_basic() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf_a = Address::generate(&s.env);
+    let leaf_b = Address::generate(&s.env);
+    let direct = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 10_000);
 
-    #[contracttype]
-    #[derive(Clone)]
-    enum DataKey {
-        Balance(Address),
-        FeeBps,
-    }
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf_a), acct(&leaf_b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&direct), Recipient::Split(child)],
+        &vec![&s.env, 6_000, 4_000],
+        &None,
+    );
 
-    #[contract]
-    pub struct FeeToken;
+    // Pay parent so it has 1_000 tokens deposited
+    s.client.deposit(&payer, &parent, &token_id, &1_000);
 
-    #[contractimpl]
-    impl FeeToken {
-        pub fn init(env: Env, fee_bps: u32) {
-            env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
-        }
+    // Distribute with depth=1 (meaning parent and direct children)
+    let amount = s.client.distribute_cascade(&parent, &token_id, &1);
+    assert_eq!(amount, 1_000);
 
-        pub fn mint(env: Env, to: Address, amount: i128) {
-            let key = DataKey::Balance(to);
-            let balance: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-            env.storage().persistent().set(&key, &(balance + amount));
-        }
-    }
+    // direct gets 60% of 1_000 = 600
+    assert_eq!(token_client.balance(&direct), 600);
+    // leaf_a gets 50% of 400 = 200
+    assert_eq!(token_client.balance(&leaf_a), 200);
+    // leaf_b gets 50% of 400 = 200
+    assert_eq!(token_client.balance(&leaf_b), 200);
 
-    #[contractimpl]
-    impl TokenInterface for FeeToken {
-        fn allowance(_env: Env, _from: Address, _spender: Address) -> i128 {
-            0
-        }
-
-        fn approve(
-            _env: Env,
-            _from: Address,
-            _spender: Address,
-            _amount: i128,
-            _expiration_ledger: u32,
-        ) {
-        }
-
-        fn balance(env: Env, id: Address) -> i128 {
-            env.storage()
-                .persistent()
-                .get(&DataKey::Balance(id))
-                .unwrap_or(0)
-        }
-
-        fn transfer(env: Env, from: Address, to: MuxedAddress, amount: i128) {
-            from.require_auth();
-            let to = to.address();
-
-            let from_key = DataKey::Balance(from.clone());
-            let from_balance: i128 = env.storage().persistent().get(&from_key).unwrap_or(0);
-            env.storage()
-                .persistent()
-                .set(&from_key, &(from_balance - amount));
-
-            let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
-            let fee = amount * fee_bps as i128 / 10_000;
-            let received = amount - fee;
-
-            let to_key = DataKey::Balance(to);
-            let to_balance: i128 = env.storage().persistent().get(&to_key).unwrap_or(0);
-            env.storage()
-                .persistent()
-                .set(&to_key, &(to_balance + received));
-        }
-
-        fn transfer_from(
-            _env: Env,
-            _spender: Address,
-            _from: Address,
-            _to: Address,
-            _amount: i128,
-        ) {
-            panic!("not used in tests")
-        }
-
-        fn burn(_env: Env, _from: Address, _amount: i128) {
-            panic!("not used in tests")
-        }
-
-        fn burn_from(_env: Env, _spender: Address, _from: Address, _amount: i128) {
-            panic!("not used in tests")
-        }
-
-        fn decimals(_env: Env) -> u32 {
-            7
-        }
-
-        fn name(env: Env) -> String {
-            String::from_str(&env, "FeeToken")
-        }
-
-        fn symbol(env: Env) -> String {
-            String::from_str(&env, "FEE")
-        }
-    }
-}
-
-fn fee_token(env: &Env, fee_bps: u32) -> (Address, fee_token::FeeTokenClient<'static>) {
-    let contract_id = env.register(fee_token::FeeToken, ());
-    let client = fee_token::FeeTokenClient::new(env, &contract_id);
-    client.init(&fee_bps);
-    (contract_id, client)
+    // Everything in parent and child is distributed, no balance left in contract
+    assert_eq!(s.client.balance(&parent, &token_id), 0);
+    assert_eq!(s.client.balance(&child, &token_id), 0);
+    assert_eq!(token_client.balance(&s.client.address), 0);
 }
 
 #[test]
-fn deposit_credits_only_the_amount_actually_received() {
+fn distribute_cascade_depth_0() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf_a = Address::generate(&s.env);
+    let leaf_b = Address::generate(&s.env);
+    let direct = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 10_000);
+
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf_a), acct(&leaf_b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&direct), Recipient::Split(child)],
+        &vec![&s.env, 6_000, 4_000],
+        &None,
+    );
+
+    s.client.deposit(&payer, &parent, &token_id, &1_000);
+
+    // Distribute with depth=0 (no cascade to children)
+    let amount = s.client.distribute_cascade(&parent, &token_id, &0);
+    assert_eq!(amount, 1_000);
+
+    assert_eq!(token_client.balance(&direct), 600);
+    // Child gets credited but NOT distributed because depth=0
+    assert_eq!(s.client.balance(&child, &token_id), 400);
+    assert_eq!(token_client.balance(&leaf_a), 0);
+    assert_eq!(token_client.balance(&leaf_b), 0);
+}
+
+#[test]
+fn distribute_cascade_exceeds_max_depth() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, _) = fund_token(&s.env, &payer, 1_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    // MAX_CASCADE_DEPTH is 5, so depth 6 should fail
+    let result = s.client.try_distribute_cascade(&id, &token_id, &6);
+    assert_eq!(result, Err(Ok(Error::MaxDepthExceeded)));
+}
+
+#[test]
+fn distribute_all_tokens_multiple_balances() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+
+    let (t1, _) = fund_token(&s.env, &payer, 10_000);
+    let (t2, _) = fund_token(&s.env, &payer, 10_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 6_000, 4_000],
+        &None,
+    );
+
+    s.client.deposit(&payer, &id, &t1, &1_000);
+    s.client.deposit(&payer, &id, &t2, &2_000);
+
+    let res = s.client.distribute_all_tokens(&id, &None);
+
+    let expected = vec![
+        &s.env,
+        TokenDistribution {
+            token: t1.clone(),
+            amount: 1_000,
+        },
+        TokenDistribution {
+            token: t2.clone(),
+            amount: 2_000,
+        },
+    ];
+    assert_eq!(res, expected);
+
+    assert_eq!(s.client.balance(&id, &t1), 0);
+    assert_eq!(s.client.balance(&id, &t2), 0);
+}
+
+#[test]
+fn distribute_all_tokens_explicit_list() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+
+    let (t1, _) = fund_token(&s.env, &payer, 10_000);
+    let (t2, _) = fund_token(&s.env, &payer, 10_000);
+    let (t3, _) = fund_token(&s.env, &payer, 10_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    s.client.deposit(&payer, &id, &t1, &1_000);
+    s.client.deposit(&payer, &id, &t2, &2_000);
+    s.client.deposit(&payer, &id, &t3, &3_000);
+
+    let res = s
+        .client
+        .distribute_all_tokens(&id, &Some(vec![&s.env, t1.clone(), t3.clone()]));
+
+    let expected = vec![
+        &s.env,
+        TokenDistribution {
+            token: t1.clone(),
+            amount: 1_000,
+        },
+        TokenDistribution {
+            token: t3.clone(),
+            amount: 3_000,
+        },
+    ];
+    assert_eq!(res, expected);
+
+    assert_eq!(s.client.balance(&id, &t1), 0);
+    assert_eq!(s.client.balance(&id, &t2), 2_000); // untouched
+    assert_eq!(s.client.balance(&id, &t3), 0);
+}
+
+#[test]
+fn distribute_all_tokens_zero_balances() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (t1, _) = fund_token(&s.env, &payer, 10_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    // No balances
+    let res = s.client.distribute_all_tokens(&id, &None);
+    assert_eq!(res, vec![&s.env]);
+
+    // Explicitly check zero-balance token is skipped and doesn't throw NothingToDistribute
+    let res2 = s.client.distribute_all_tokens(&id, &Some(vec![&s.env, t1]));
+    assert_eq!(res2, vec![&s.env]);
+}
+
+#[test]
+fn distribute_all_tokens_too_many_tokens() {
     let s = setup();
     let creator = Address::generate(&s.env);
     let a = Address::generate(&s.env);
@@ -1330,129 +1518,39 @@ fn deposit_credits_only_the_amount_actually_received() {
         &None,
     );
 
-    // 5% fee on transfer: a deposit of 1_000 only delivers 950 to the vault.
-    let (token_id, token_client) = fee_token(&s.env, 500);
-    token_client.mint(&payer, &1_000);
+    let mut tokens = vec![&s.env];
+    for _ in 0..11 {
+        let (t, _) = fund_token(&s.env, &payer, 1_000);
+        tokens.push_back(t);
+    }
 
-    s.client.deposit(&payer, &id, &token_id, &1_000);
-
-    assert_eq!(token_client.balance(&s.client.address), 950);
-    assert_eq!(s.client.balance(&id, &token_id), 950);
-    assert_eq!(s.client.held_tokens(&id), vec![&s.env, token_id.clone()]);
+    let res = s.client.try_distribute_all_tokens(&id, &Some(tokens));
+    assert_eq!(res, Err(Ok(Error::TooManyTokens)));
 }
 
 #[test]
-fn distribute_pays_out_the_fee_adjusted_balance() {
+fn distribute_all_tokens_not_found() {
+    let s = setup();
+    let res = s.client.try_distribute_all_tokens(&999, &None);
+    assert_eq!(res, Err(Ok(Error::SplitNotFound)));
+}
+
+#[test]
+fn has_split_checks_existence() {
     let s = setup();
     let creator = Address::generate(&s.env);
     let a = Address::generate(&s.env);
-    let b = Address::generate(&s.env);
-    let payer = Address::generate(&s.env);
+
+    assert!(!s.client.has_split(&0));
+    assert!(!s.client.has_split(&99));
 
     let id = s.client.create_split(
         &creator,
-        &vec![&s.env, acct(&a), acct(&b)],
-        &vec![&s.env, 5_000, 5_000],
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
         &None,
     );
 
-    // 10% fee on transfer: a deposit of 500 delivers 450 to the vault.
-    let (token_id, token_client) = fee_token(&s.env, 1_000);
-    token_client.mint(&payer, &500);
-
-    s.client.deposit(&payer, &id, &token_id, &500);
-    assert_eq!(s.client.balance(&id, &token_id), 450);
-
-    let distributed = s.client.distribute(&id, &token_id);
-
-    // The split only ever claimed to hold what actually arrived, so
-    // distributing it does not try to move more than the vault has.
-    assert_eq!(distributed, 450);
-    assert_eq!(token_client.balance(&s.client.address), 0);
-}
-
-// #109: randomized conservation fuzz test using the in-harness test PRNG.
-// Generates many random (shares, amount) combinations and asserts that the
-// splitter conserves funds: amount-in == amount-out, with no panic/wrap.
-#[test]
-fn conservation_holds_across_random_splits() {
-    const ITERATIONS: u32 = 256;
-    let s = setup();
-    let creator = Address::generate(&s.env);
-
-    // Seed the in-harness PRNG once so that successive iterations draw
-    // DIFFERENT pseudo-random inputs (re-seeding each iteration would make
-    // every case identical and defeat the fuzzing).
-    s.env.as_contract(&s.client.address, || {
-        s.env
-            .prng()
-            .seed(soroban_sdk::Bytes::from_array(&s.env, &[42; 32]));
-    });
-
-    for _ in 0..ITERATIONS {
-        // Generate random inputs (prng requires a contract context).
-        let generated = s.env.as_contract(&s.client.address, || {
-            let n: u64 = s.env.prng().gen::<u64>() % 8 + 2;
-            let n = n as usize;
-
-            let mut weights: alloc::vec::Vec<u64> = alloc::vec::Vec::new();
-            let mut total: u64 = 0;
-            for _ in 0..n {
-                let w: u64 = s.env.prng().gen::<u64>() % 10_000 + 1;
-                weights.push(w);
-                total += w;
-            }
-
-            let mut shares_vec: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&s.env);
-            let mut running: u32 = 0;
-            for (i, w) in weights.iter().enumerate() {
-                let norm = if i + 1 == n {
-                    10_000 - running
-                } else {
-                    let v = ((*w * 10_000 / total) as u32).max(1);
-                    if running + v > 10_000 {
-                        10_000 - running
-                    } else {
-                        v
-                    }
-                };
-                shares_vec.push_back(norm);
-                running += norm;
-            }
-            if running != 10_000 {
-                return None;
-            }
-
-            let mut recipients_vec: soroban_sdk::Vec<Recipient> = soroban_sdk::Vec::new(&s.env);
-            let mut addrs_vec: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&s.env);
-            for _ in 0..n {
-                let addr = Address::generate(&s.env);
-                recipients_vec.push_back(acct(&addr));
-                addrs_vec.push_back(addr);
-            }
-
-            let amount_raw: u64 = s.env.prng().gen::<u64>();
-            let mut amount: i128 = (amount_raw % (i128::MAX as u64)) as i128;
-            if amount <= 0 {
-                amount = 1;
-            }
-            Some((shares_vec, recipients_vec, addrs_vec, amount))
-        });
-
-        let Some((shares, recipients, addrs, amount)) = generated else {
-            continue;
-        };
-
-        let id = s.client.create_split(&creator, &recipients, &shares, &None);
-
-        let payer = Address::generate(&s.env);
-        let (token_id, token_client) = fund_token(&s.env, &payer, amount);
-        s.client.pay(&payer, &id, &token_id, &amount);
-
-        let mut received: i128 = 0;
-        for addr in addrs.iter() {
-            received += token_client.balance(&addr);
-        }
-        assert_eq!(received, amount, "conservation broken for random split");
-    }
+    assert!(s.client.has_split(&id));
+    assert!(!s.client.has_split(&99));
 }

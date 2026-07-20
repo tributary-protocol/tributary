@@ -42,7 +42,7 @@ body::before {
 .page {
   position: relative;
   z-index: 1;
-  max-width: 880px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 0 20px 60px;
 }
@@ -71,6 +71,15 @@ header {
 
 .brand img {
   border-radius: 9px;
+}
+
+a.brand {
+  color: var(--text);
+  text-decoration: none;
+}
+
+a.brand:hover {
+  text-decoration: none;
 }
 
 nav {
@@ -121,6 +130,27 @@ button.ghost:hover:not(:disabled) {
   filter: none;
 }
 
+a.ghost-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.15s ease, filter 0.15s ease;
+}
+
+a.ghost-link:hover {
+  border-color: var(--muted);
+  text-decoration: none;
+  filter: brightness(1.06);
+}
+
 .wallet {
   font-family: ui-monospace, Consolas, monospace;
   font-size: 13px;
@@ -132,6 +162,37 @@ button.ghost:hover:not(:disabled) {
 
 .intro {
   padding: 44px 0 30px;
+}
+
+.split-intro {
+  max-width: none;
+}
+
+.split-kicker,
+.split-actions,
+.split-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.split-actions {
+  margin-top: 18px;
+}
+
+.split-card {
+  max-width: none;
+  margin-bottom: 24px;
+}
+
+.split-details {
+  display: grid;
+  gap: 4px;
+}
+
+.split-state {
+  max-width: 460px;
 }
 
 .intro h1 {
@@ -346,6 +407,11 @@ h2 {
   border-color: #31456b;
 }
 
+.split:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .split-head {
   display: flex;
   justify-content: space-between;
@@ -355,6 +421,10 @@ h2 {
 
 .split-id {
   font-weight: 650;
+}
+
+.split-meta {
+  justify-content: flex-end;
 }
 
 .badge {

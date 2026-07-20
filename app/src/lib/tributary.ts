@@ -37,6 +37,22 @@ export interface SplitView {
   controller: string | undefined;
 }
 
+function toSplitView(
+  id: bigint,
+  split: {
+    recipients: Recipient[];
+    shares: number[];
+    controller: string | undefined;
+  },
+): SplitView {
+  return {
+    id,
+    recipients: [...split.recipients],
+    shares: [...split.shares],
+    controller: split.controller,
+  };
+}
+
 export function readClient(): Client {
   return new Client({ ...networks.testnet, rpcUrl: RPC_URL });
 }
@@ -77,16 +93,16 @@ export async function fetchSplits(limit = 25): Promise<SplitView[]> {
     ids.map(async (id) => {
       const { result } = await client.get_split({ id });
       if (result.isErr()) return null;
-      const split = result.unwrap();
-      return {
-        id,
-        recipients: [...split.recipients],
-        shares: [...split.shares],
-        controller: split.controller,
-      };
+      return toSplitView(id, result.unwrap());
     }),
   );
   return splits.filter((s): s is SplitView => s !== null);
+}
+
+export async function fetchSplitById(id: bigint): Promise<SplitView | null> {
+  const { result } = await readClient().get_split({ id });
+  if (result.isErr()) return null;
+  return toSplitView(id, result.unwrap());
 }
 
 export async function fetchMineIds(creator: string): Promise<Set<string>> {
@@ -251,6 +267,10 @@ export function recipientLabel(r: Recipient): string {
   return r.tag === "Account"
     ? shortAddress(r.values[0])
     : `split #${String(r.values[0])}`;
+}
+
+export function splitPath(id: bigint | string): string {
+  return `/split/${String(id)}`;
 }
 
 export function shortAddress(addr: string): string {

@@ -15,10 +15,12 @@ import FeeHint from "./FeeHint";
 export default function PaySplit({
   wallet,
   splits,
+  selectedSplitId,
   onPaid,
 }: {
   wallet: string | null;
   splits: SplitView[];
+  selectedSplitId?: string;
   onPaid: () => void;
 }) {
   const { t } = useTranslation();
@@ -44,6 +46,12 @@ export default function PaySplit({
         amount: toStroops(amount),
       });
   }, [wallet, splitId, amount, token]);
+
+  useEffect(() => {
+    if (selectedSplitId !== undefined) {
+      setSplitId(selectedSplitId);
+    }
+  }, [selectedSplitId]);
 
   useEffect(() => {
     let active = true;

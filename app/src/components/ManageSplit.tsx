@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { walletClient, readClient, SplitView, Recipient } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import RecipientEditor, {
@@ -20,10 +20,12 @@ function toRows(split: SplitView): Row[] {
 export default function ManageSplit({
   wallet,
   splits,
+  selectedSplitId,
   onChanged,
 }: {
   wallet: string | null;
   splits: SplitView[];
+  selectedSplitId?: string;
   onChanged: () => void;
 }) {
   const [splitId, setSplitId] = useState("");
@@ -35,39 +37,19 @@ export default function ManageSplit({
   const [message, setMessage] = useState<string | null>(null);
 
   const { t } = useTranslation();
-  const mine = splits.filter((s) => s.controller === wallet);
+  const mine = useMemo(
+    () => splits.filter((s) => s.controller === wallet),
+    [splits, wallet],
+  );
 
-  const updateFee = useMemo(() => {
-    if (!wallet || splitId === "" || rowsError(rows, t)) return null;
-    return () =>
-      walletClient(wallet).update_split({
-        id: BigInt(splitId),
-        recipients: rows.map(toRecipient),
-        shares: toShares(rows),
-      });
-  }, [wallet, splitId, rows]);
-
-  const transferFee = useMemo(() => {
-    if (!wallet || splitId === "" || !/^G[A-Z2-7]{55}$/.test(transferTo.trim())) {
-      return null;
+  useEffect(() => {
+    if (
+      selectedSplitId !== undefined &&
+      mine.some((s) => String(s.id) === selectedSplitId)
+    ) {
+      select(selectedSplitId);
     }
-    return () =>
-      walletClient(wallet).transfer_control({
-        id: BigInt(splitId),
-        new_controller: transferTo.trim(),
-      });
-  }, [wallet, splitId, transferTo]);
-
-  const lockFee = useMemo(() => {
-    if (!wallet || splitId === "" || !confirmLock) return null;
-    return () =>
-      walletClient(wallet).transfer_control({
-        id: BigInt(splitId),
-        new_controller: undefined,
-      });
-  }, [wallet, splitId, confirmLock]);
-
-  if (!wallet || mine.length === 0) return null;
+  }, [selectedSplitId, mine]);
 
   useEffect(() => {
     if (!splitId) {
@@ -83,6 +65,8 @@ export default function ManageSplit({
       .catch(() => {});
     return () => { active = false; };
   }, [splitId]);
+
+  if (!wallet || mine.length === 0) return null;
 
   function select(id: string) {
     setSplitId(id);
