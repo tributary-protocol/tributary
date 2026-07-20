@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { EXPLORER, recipientLabel, SplitView } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import { CopyButton } from "./CopyButton";
+import { ShareButton } from "./ShareButton";
 
 export default function SplitList({
   splits,
@@ -79,6 +80,7 @@ export default function SplitList({
               <div className="split-head">
                 <span className="split-id">#{key}</span>
                 <CopyButton text={String(key)}>{t("copy")}</CopyButton>
+                <ShareButton splitId={key} />
                 <span>
                   {mine.has(key) && (
                     <span className="badge own">{t("yours")}</span>
