@@ -33,3 +33,9 @@ deploy:
 demo:
 	@echo "Running demo..."
 	sh ./scripts/demo.sh
+
+# Run the standalone Node create-and-pay example against testnet
+node-example:
+	@echo "Running node-create-and-pay example..."
+	cd sdk && npm install && npm run build
+	cd examples/node-create-and-pay && npm install && npm start

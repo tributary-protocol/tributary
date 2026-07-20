@@ -37,6 +37,22 @@ export interface SplitView {
   controller: string | undefined;
 }
 
+function toSplitView(
+  id: bigint,
+  split: {
+    recipients: Recipient[];
+    shares: number[];
+    controller: string | undefined;
+  },
+): SplitView {
+  return {
+    id,
+    recipients: [...split.recipients],
+    shares: [...split.shares],
+    controller: split.controller,
+  };
+}
+
 export function readClient(): Client {
   return new Client({ ...networks.testnet, rpcUrl: RPC_URL });
 }
@@ -77,16 +93,16 @@ export async function fetchSplits(limit = 25): Promise<SplitView[]> {
     ids.map(async (id) => {
       const { result } = await client.get_split({ id });
       if (result.isErr()) return null;
-      const split = result.unwrap();
-      return {
-        id,
-        recipients: [...split.recipients],
-        shares: [...split.shares],
-        controller: split.controller,
-      };
+      return toSplitView(id, result.unwrap());
     }),
   );
   return splits.filter((s): s is SplitView => s !== null);
+}
+
+export async function fetchSplitById(id: bigint): Promise<SplitView | null> {
+  const { result } = await readClient().get_split({ id });
+  if (result.isErr()) return null;
+  return toSplitView(id, result.unwrap());
 }
 
 export async function fetchMineIds(creator: string): Promise<Set<string>> {
@@ -270,10 +286,24 @@ export async function fetchActivityForSplit(
 }
 
 
+// ---------------------------------------------------------------------------
+// Trustline checking — see trustlines.ts
+// ---------------------------------------------------------------------------
+export type {
+  TrustlineStatus,
+  RecipientTrustline,
+  TrustlineCheckResult,
+} from "./trustlines";
+export { checkTrustlines } from "./trustlines";
+
 export function recipientLabel(r: Recipient): string {
   return r.tag === "Account"
     ? shortAddress(r.values[0])
     : `split #${String(r.values[0])}`;
+}
+
+export function splitPath(id: bigint | string): string {
+  return `/split/${String(id)}`;
 }
 
 export function shortAddress(addr: string): string {
@@ -300,9 +330,16 @@ export function toStroops(units: string): bigint {
 }
 
 export function fromStroops(stroops: bigint): string {
-  return (Number(stroops) / 10_000_000).toLocaleString(undefined, {
-    maximumFractionDigits: 7,
-  });
+  const negative = stroops < 0n;
+  const abs = negative ? -stroops : stroops;
+  const whole = abs / 10_000_000n;
+  const frac = abs % 10_000_000n;
+
+  const wholeStr = whole.toLocaleString(undefined);
+  const fracStr = frac.toString().padStart(7, "0").replace(/0+$/, "");
+  const sign = negative ? "-" : "";
+
+  return fracStr ? `${sign}${wholeStr}.${fracStr}` : `${sign}${wholeStr}`;
 }
 
 /** Format a decimal-string amount with locale-aware thousands separators. */
