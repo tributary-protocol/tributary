@@ -3,7 +3,7 @@ import {
   walletClient,
   toStroops,
   fromStroops,
-  localPreviewPayout,
+  previewPayout,
   recipientLabel,
   checkTrustlines,
   shortAddress,
@@ -58,12 +58,9 @@ export default function PaySplit({
     }
     try {
       const stroops = toStroops(amount);
-      if (selected) {
-        const parts = localPreviewPayout(selected.shares, stroops);
+      previewPayout(BigInt(splitId), stroops).then((parts) => {
         if (active) setPreview(parts);
-      } else {
-        setPreview([]);
-      }
+      });
     } catch (e) {
       if (active) {
         setPreview([]);
@@ -73,7 +70,7 @@ export default function PaySplit({
     return () => {
       active = false;
     };
-  }, [splitId, amount, selected]);
+  }, [splitId, amount]);
 
   // Trustline check — debounced 400 ms, fired when split or token changes
   useEffect(() => {
