@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type Language = "en" | "vi" | "it";
+export type Language = "en" | "vi" | "it" | "tr";
 
 export const LANGUAGE_STORAGE_KEY = "tributary-lang";
 
@@ -10,7 +10,7 @@ export function readSavedLanguage(): Language {
   }
 
   const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return saved === "vi" || saved === "it" || saved === "en" ? saved : "en";
+  return saved === "vi" || saved === "it" || saved === "tr" || saved === "en" ? saved : "en";
 }
 
 export function persistLanguage(lang: Language) {
@@ -330,6 +330,109 @@ const translations = {
     activitySplitNum: "divisione #{id}",
     // Footer
     contractOnTestnet: "Contratto su testnet",
+  },
+  tr: {
+    // Header & Navigation
+    connectWallet: "Freighter'ı Bağla",
+    github: "GitHub",
+    testnet: "Testnet",
+    // Intro
+    introTitle: "Stellar'da ödemeleri böl",
+    introDesc: "Tek bir işlem, her alıcıya payına göre ödeme yapılır. Testnet üzerinde çalışıyor.",
+    // ActionPanel tabs
+    tabCreate: "Oluştur",
+    tabPay: "Öde",
+    tabEscrow: "Emanet",
+    tabManage: "Yönet",
+    // CreateSplit
+    createTitle: "Bölme oluştur",
+    createEditableLabel: "Bu bölmeyi daha sonra düzenleyebilirim (sonsuza kadar kilitlemek için işareti kaldırın)",
+    createButton: "Bölme oluştur",
+    waitingForSignature: "İmza bekleniyor…",
+    connectWalletFirst: "Önce cüzdanınızı bağlayın.",
+    splitCreated: "Bölme #{id} oluşturuldu.",
+    contractRejectedSplit: "Sözleşme bölmeyi reddetti.",
+    // RecipientEditor
+    sharesTotalError: "Payların toplamı %100 olmalıdır.",
+    sharesGreaterZeroError: "Paylar sıfırdan büyük olmalıdır.",
+    recipientRequiredError: "Her alıcının bir adresi veya bölme kimliği olmalıdır.",
+    recipientFormatError: "Alıcı adresleri G… ile başlayan hesap anahtarları olmalıdır.",
+    kindAddress: "Adres",
+    kindSplit: "Bölme",
+    placeholderAddress: "G… alıcı adresi",
+    placeholderSplit: "Bölme kimliği",
+    addRecipient: "Alıcı ekle",
+    pctOfTotal: "%100'ün %{pct}'si",
+    // PaySplit
+    payTitle: "Bir bölme aracılığıyla öde",
+    chooseSplit: "Bölme seç",
+    recipientsCount: "{count} alıcı",
+    amount: "Miktar",
+    paySuccess: "#{id} numaralı bölme aracılığıyla {amount} {token} ödendi.",
+    payFailed: "Ödeme başarısız oldu.",
+    payButton: "Öde",
+    pickSplitAndAmount: "Bir bölme ve miktar seçin.",
+    trustlineWarningTitle: "{token} ile ödeme yapılamıyor",
+    trustlineWarningItem: "{address}, {token} için bir güven hattına sahip değil. Bu bölmenin {token} ile ödenebilmesi için bunu eklemeleri gerekir.",
+    trustlineWarningHint: "Tüm alıcılar bu token'ı alabilene kadar ödeme engellenir.",
+    trustlineNoticeTitle: "Güven hattı kontrolü sonuçsuz",
+    trustlineNoticeHint: "Bazı alıcılar için güven hatları doğrulanamadı. Bu token'ı alamazlarsa ödeme başarısız olabilir.",
+    // EscrowCard
+    escrowTitle: "Emanet",
+    escrowDesc: "Fonları şimdi bir bölmeye park edin, herkese daha sonra ödeme yapın.",
+    pending: "Bekleyen: {amount} {token}",
+    depositButton: "Yatır",
+    distributeButton: "Dağıt",
+    distributeSuccess: "{amount} {token} tüm alıcılara dağıtıldı.",
+    distributeFailed: "Dağıtılacak bir şey yok.",
+    depositSuccess: "{amount} {token} yatırıldı.",
+    depositFailed: "Yatırma başarısız oldu.",
+    pickSplit: "Bir bölme seçin.",
+    working: "İşleniyor…",
+    // ManageSplit
+    manageTitle: "Bölmelerinizi yönetin",
+    chooseSplitControl: "Kontrol ettiğiniz bölmeyi seçin",
+    updateButton: "Bölmeyi güncelle",
+    placeholderController: "G… yeni yönetici",
+    transferButton: "Devret",
+    lockButton: "Sonsuza kadar kilitle",
+    confirmLockButton: "Kilidi onayla",
+    updateSuccess: "Bölme güncellendi.",
+    updateFailed: "Güncelleme reddedildi.",
+    transferSuccess: "Kontrol devredildi.",
+    transferFailed: "Devir reddedildi.",
+    lockConfirmPrompt: "Kilitleme kalıcıdır. Onaylamak için tekrar basın.",
+    lockSuccess: "Bölme sonsuza kadar kilitlendi.",
+    lockFailed: "Kilitleme reddedildi.",
+    controllerFormatError: "Yönetici G… ile başlayan bir hesap anahtarı olmalıdır.",
+    // SplitList & Detail
+    loadingSplits: "Bölmeler yükleniyor…",
+    noSplitsOnContract: "Bu sözleşmede henüz hiçbir bölme yok.",
+    noSplitsPrompt: "Testnet üzerinde Freighter'ı bağlayın, Oluştur sekmesini açın ve ilkini kaydedin. Testnet XLM friendbot'tan ücretsizdir, bu yüzden denemek hiçbir şeye mal olmaz.",
+    recentSplits: "Son bölmeler",
+    copy: "Kopyala",
+    yours: "sizin",
+    mutable: "değiştirilebilir",
+    locked: "kilitli",
+    nestedSplit: "bölme #{id}",
+    detailEscrow: "emanet",
+    detailController: "yönetici: {controller}",
+    detailHistoryTitle: "Ödeme ve Dağıtım Geçmişi",
+    detailHistoryEmpty: "Henüz ödeme veya dağıtım yok.",
+    detailHistoryLoading: "Geçmiş yükleniyor…",
+    // Activity
+    recentActivity: "Son etkinlikler",
+    exportCsv: "CSV İndir",
+    activityCreated: "oluşturuldu",
+    activityPaid: "ödendi",
+    activityUpdated: "güncellendi",
+    activityDeposit: "yatırma",
+    activityDistributed: "dağıtıldı",
+    activityControlMoved: "kontrol devredildi",
+    activityTx: "tx",
+    activitySplitNum: "bölme #{id}",
+    // Footer
+    contractOnTestnet: "Sözleşme testnet üzerinde",
   },
 };
 
