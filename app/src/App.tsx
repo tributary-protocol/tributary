@@ -1,21 +1,43 @@
-import { useCallback, useState } from "react";
-import { Link, Route, Routes } from "react-router-dom";
-import { motion } from "motion/react";
-import {
-  CONTRACT_ID,
-  EXPLORER,
-  connectWallet,
-  shortAddress,
-} from "./lib/tributary";
-import { useTranslation } from "./lib/i18n";
-import DashboardPage from "./pages/DashboardPage";
-import SplitPage from "./pages/SplitPage";
-import LanguageSwitcher from "./components/LanguageSwitcher";
+import { useState, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { Routes, Route, Link } from "react-router-dom";
+import { motion } from "framer-motion";
+import { DashboardPage } from "./pages/DashboardPage";
+import { SplitPage } from "./pages/SplitPage";
+import { SplitList } from "./components/SplitList";
+import { Activity } from "./components/Activity";
+import { LanguageSwitcher } from "./components/LanguageSwitcher";
+import { shortAddress, connectWallet } from "./utils";
+import { REFRESH_MS, EXPLORER, CONTRACT_ID } from "./constants";
 
 export default function App() {
   const { t } = useTranslation();
   const [wallet, setWallet] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [backgroundError, setBackgroundError] = useState<string | null>(null);
+  const [splits, setSplits] = useState([]);
+  const [activity, setActivity] = useState([]);
+  const [mine, setMine] = useState(new Set<string>());
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    // ... existing refresh code ...
+  }, [wallet, loading]);
+
+  useEffect(() => {
+    refresh();
+    const timer = setInterval(() => {
+      if (!document.hidden) refresh();
+    }, REFRESH_MS);
+    const onVisible = () => {
+      if (!document.hidden) refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refresh]);
 
   const onConnect = useCallback(async () => {
     try {
@@ -70,6 +92,24 @@ export default function App() {
             }
           />
         </Routes>
+
+        <motion.div
+          transition={{ duration: 0.5, ease: "easeOut", delay: 0.16 }}
+        >
+          <SplitList splits={splits} loading={loading} mine={mine} />
+        </motion.div>
+
+        {backgroundError && (
+          <div className="background-error">
+            <span>{t("refreshFailed")}</span>
+            <button onClick={() => refresh()}>{t("retryButton")}</button>
+            <button className="ghost" onClick={() => setBackgroundError(null)}>
+              {t("dismissButton")}
+            </button>
+          </div>
+        )}
+
+        <Activity items={activity} />
       </main>
 
       <footer>
