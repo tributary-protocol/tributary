@@ -1554,3 +1554,258 @@ fn has_split_checks_existence() {
     assert!(s.client.has_split(&id));
     assert!(!s.client.has_split(&99));
 }
+
+mod fee_token {
+    //! A minimal token that keeps a cut of every transfer, standing in for
+    //! real-world fee-on-transfer tokens so `deposit` can be tested against
+    //! a token that delivers less than the amount requested.
+    use soroban_sdk::{
+        contract, contractimpl, contracttype, token::TokenInterface, Address, Env, MuxedAddress,
+        String,
+    };
+
+    #[contracttype]
+    #[derive(Clone)]
+    enum DataKey {
+        Balance(Address),
+        FeeBps,
+    }
+
+    #[contract]
+    pub struct FeeToken;
+
+    #[contractimpl]
+    impl FeeToken {
+        pub fn init(env: Env, fee_bps: u32) {
+            env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
+        }
+
+        pub fn mint(env: Env, to: Address, amount: i128) {
+            let key = DataKey::Balance(to);
+            let balance: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+            env.storage().persistent().set(&key, &(balance + amount));
+        }
+    }
+
+    #[contractimpl]
+    impl TokenInterface for FeeToken {
+        fn allowance(_env: Env, _from: Address, _spender: Address) -> i128 {
+            0
+        }
+
+        fn approve(
+            _env: Env,
+            _from: Address,
+            _spender: Address,
+            _amount: i128,
+            _expiration_ledger: u32,
+        ) {
+        }
+
+        fn balance(env: Env, id: Address) -> i128 {
+            env.storage()
+                .persistent()
+                .get(&DataKey::Balance(id))
+                .unwrap_or(0)
+        }
+
+        fn transfer(env: Env, from: Address, to: MuxedAddress, amount: i128) {
+            from.require_auth();
+            let to = to.address();
+
+            let from_key = DataKey::Balance(from.clone());
+            let from_balance: i128 = env.storage().persistent().get(&from_key).unwrap_or(0);
+            env.storage()
+                .persistent()
+                .set(&from_key, &(from_balance - amount));
+
+            let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
+            let fee = amount * fee_bps as i128 / 10_000;
+            let received = amount - fee;
+
+            let to_key = DataKey::Balance(to);
+            let to_balance: i128 = env.storage().persistent().get(&to_key).unwrap_or(0);
+            env.storage()
+                .persistent()
+                .set(&to_key, &(to_balance + received));
+        }
+
+        fn transfer_from(
+            _env: Env,
+            _spender: Address,
+            _from: Address,
+            _to: Address,
+            _amount: i128,
+        ) {
+            panic!("not used in tests")
+        }
+
+        fn burn(_env: Env, _from: Address, _amount: i128) {
+            panic!("not used in tests")
+        }
+
+        fn burn_from(_env: Env, _spender: Address, _from: Address, _amount: i128) {
+            panic!("not used in tests")
+        }
+
+        fn decimals(_env: Env) -> u32 {
+            7
+        }
+
+        fn name(env: Env) -> String {
+            String::from_str(&env, "FeeToken")
+        }
+
+        fn symbol(env: Env) -> String {
+            String::from_str(&env, "FEE")
+        }
+    }
+}
+
+fn fee_token(env: &Env, fee_bps: u32) -> (Address, fee_token::FeeTokenClient<'static>) {
+    let contract_id = env.register(fee_token::FeeToken, ());
+    let client = fee_token::FeeTokenClient::new(env, &contract_id);
+    client.init(&fee_bps);
+    (contract_id, client)
+}
+
+#[test]
+fn deposit_credits_only_the_amount_actually_received() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    // 5% fee on transfer: a deposit of 1_000 only delivers 950 to the vault.
+    let (token_id, token_client) = fee_token(&s.env, 500);
+    token_client.mint(&payer, &1_000);
+
+    s.client.deposit(&payer, &id, &token_id, &1_000);
+
+    assert_eq!(token_client.balance(&s.client.address), 950);
+    assert_eq!(s.client.balance(&id, &token_id), 950);
+    assert_eq!(s.client.held_tokens(&id), vec![&s.env, token_id.clone()]);
+}
+
+#[test]
+fn distribute_pays_out_the_fee_adjusted_balance() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    // 10% fee on transfer: a deposit of 500 delivers 450 to the vault.
+    let (token_id, token_client) = fee_token(&s.env, 1_000);
+    token_client.mint(&payer, &500);
+
+    s.client.deposit(&payer, &id, &token_id, &500);
+    assert_eq!(s.client.balance(&id, &token_id), 450);
+
+    let distributed = s.client.distribute(&id, &token_id);
+
+    // The split only ever claimed to hold what actually arrived, so
+    // distributing it does not try to move more than the vault has.
+    assert_eq!(distributed, 450);
+    assert_eq!(token_client.balance(&s.client.address), 0);
+}
+
+// #109: randomized conservation fuzz test using the in-harness test PRNG.
+// Generates many random (shares, amount) combinations and asserts that the
+// splitter conserves funds: amount-in == amount-out, with no panic/wrap.
+#[test]
+fn conservation_holds_across_random_splits() {
+    const ITERATIONS: u32 = 256;
+    let s = setup();
+    let creator = Address::generate(&s.env);
+
+    // Seed the in-harness PRNG once so that successive iterations draw
+    // DIFFERENT pseudo-random inputs (re-seeding each iteration would make
+    // every case identical and defeat the fuzzing).
+    s.env.as_contract(&s.client.address, || {
+        s.env
+            .prng()
+            .seed(soroban_sdk::Bytes::from_array(&s.env, &[42; 32]));
+    });
+
+    for _ in 0..ITERATIONS {
+        // Generate random inputs (prng requires a contract context).
+        let generated = s.env.as_contract(&s.client.address, || {
+            let n: u64 = s.env.prng().gen::<u64>() % 8 + 2;
+            let n = n as usize;
+
+            let mut weights: alloc::vec::Vec<u64> = alloc::vec::Vec::new();
+            let mut total: u64 = 0;
+            for _ in 0..n {
+                let w: u64 = s.env.prng().gen::<u64>() % 10_000 + 1;
+                weights.push(w);
+                total += w;
+            }
+
+            let mut shares_vec: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&s.env);
+            let mut running: u32 = 0;
+            for (i, w) in weights.iter().enumerate() {
+                let norm = if i + 1 == n {
+                    10_000 - running
+                } else {
+                    let v = ((*w * 10_000 / total) as u32).max(1);
+                    if running + v > 10_000 {
+                        10_000 - running
+                    } else {
+                        v
+                    }
+                };
+                shares_vec.push_back(norm);
+                running += norm;
+            }
+            if running != 10_000 {
+                return None;
+            }
+
+            let mut recipients_vec: soroban_sdk::Vec<Recipient> = soroban_sdk::Vec::new(&s.env);
+            let mut addrs_vec: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&s.env);
+            for _ in 0..n {
+                let addr = Address::generate(&s.env);
+                recipients_vec.push_back(acct(&addr));
+                addrs_vec.push_back(addr);
+            }
+
+            let amount_raw: u64 = s.env.prng().gen::<u64>();
+            let mut amount: i128 = (amount_raw % (i128::MAX as u64)) as i128;
+            if amount <= 0 {
+                amount = 1;
+            }
+            Some((shares_vec, recipients_vec, addrs_vec, amount))
+        });
+
+        let Some((shares, recipients, addrs, amount)) = generated else {
+            continue;
+        };
+
+        let id = s.client.create_split(&creator, &recipients, &shares, &None);
+
+        let payer = Address::generate(&s.env);
+        let (token_id, token_client) = fund_token(&s.env, &payer, amount);
+        s.client.pay(&payer, &id, &token_id, &amount);
+
+        let mut received: i128 = 0;
+        for addr in addrs.iter() {
+            received += token_client.balance(&addr);
+        }
+        assert_eq!(received, amount, "conservation broken for random split");
+    }
+}

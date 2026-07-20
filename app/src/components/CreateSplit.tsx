@@ -118,6 +118,7 @@ export default function CreateSplit({
 =======
 >>>>>>> 4ede99ef41d97d76a6e471a915a22baf215f594b
       <button disabled={busy} onClick={submit}>
+        {busy && <span className="btn-spinner" />}
         {busy ? t("waitingForSignature") : t("createButton")}
       </button>
       {message && <p className="note">{message}</p>}

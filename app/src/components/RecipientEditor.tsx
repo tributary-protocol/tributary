@@ -1,4 +1,5 @@
 import { Recipient } from "../lib/tributary";
+import Tooltip from "./Tooltip";
 
 export interface Row {
   kind: "address" | "split";
@@ -55,6 +56,13 @@ export default function RecipientEditor({
 
   return (
     <>
+      <div className="field-help">
+        <span>Recipient shares</span>
+        <Tooltip label="basis points">
+          Shares are stored in basis points: 1 basis point is 0.01%, so 10,000
+          basis points equals 100%. Enter shares here as percentages.
+        </Tooltip>
+      </div>
       {rows.map((row, i) => (
         <div className="row" key={i}>
           <select
@@ -75,6 +83,7 @@ export default function RecipientEditor({
           <input
             className="pct"
             type="number"
+            aria-label={`Recipient ${i + 1} share percentage`}
             min="0"
             max="100"
             value={row.percent}

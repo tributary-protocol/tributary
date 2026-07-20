@@ -118,6 +118,24 @@ button:disabled {
   cursor: default;
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(6, 18, 31, 0.3);
+  border-top-color: var(--accent-ink);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
 button.ghost {
   background: transparent;
   color: var(--muted);
@@ -312,6 +330,77 @@ select.kind {
   font-size: 13px;
 }
 
+.field-help,
+.preview-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.field-help {
+  margin-bottom: 8px;
+}
+
+.tooltip {
+  position: relative;
+  display: inline-flex;
+}
+
+button.tooltip-trigger {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--muted);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+button.tooltip-trigger:hover,
+button.tooltip-trigger:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  filter: none;
+  outline: none;
+}
+
+.tooltip-content {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: min(260px, 75vw);
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #17233a;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  transform: translateX(-50%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s ease;
+}
+
+.tooltip:hover .tooltip-content,
+.tooltip:focus-within .tooltip-content {
+  opacity: 1;
+  visibility: visible;
+}
+
 .total {
   font-size: 13px;
   color: var(--muted);
@@ -351,10 +440,18 @@ button.small {
 }
 
 .preview {
-  list-style: none;
   padding: 8px 0;
   margin-bottom: 8px;
   border-top: 1px solid var(--line);
+}
+
+.preview-heading {
+  margin-bottom: 4px;
+}
+
+.preview ul {
+  list-style: none;
+  padding: 0;
 }
 
 .preview li {
