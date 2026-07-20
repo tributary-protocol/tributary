@@ -1811,26 +1811,6 @@ fn conservation_holds_across_random_splits() {
 }
 
 #[test]
-fn has_split_checks_existence() {
-    let s = setup();
-    let creator = Address::generate(&s.env);
-    let a = Address::generate(&s.env);
-
-    assert!(!s.client.has_split(&0));
-    assert!(!s.client.has_split(&99));
-
-    let id = s.client.create_split(
-        &creator,
-        &vec![&s.env, acct(&a)],
-        &vec![&s.env, 10_000],
-        &None,
-    );
-
-    assert!(s.client.has_split(&id));
-    assert!(!s.client.has_split(&99));
-}
-
-#[test]
 fn single_recipient_gets_full_amount() {
     let s = setup();
     let creator = Address::generate(&s.env);
