@@ -113,10 +113,7 @@ export default function CreateSplit({
       <p className="hint" title="When a payment cannot be divided evenly, the tiny remainder (dust) goes to the last recipient so the full amount always lands somewhere.">
         ⓘ Rounding dust goes to the last recipient.
       </p>
-<<<<<<< HEAD
       <FeeHint assemble={assembleFee} />
-=======
->>>>>>> 4ede99ef41d97d76a6e471a915a22baf215f594b
       <button disabled={busy} onClick={submit}>
         {busy && <span className="btn-spinner" />}
         {busy ? t("waitingForSignature") : t("createButton")}
