@@ -102,6 +102,7 @@ export default function CreateSplit({
         ⓘ Rounding dust goes to the last recipient.
       </p>
       <button disabled={busy} onClick={submit}>
+        {busy && <span className="btn-spinner" />}
         {busy ? t("waitingForSignature") : t("createButton")}
       </button>
       {message && <p className="note">{message}</p>}
