@@ -58,6 +58,7 @@
     "summarises",
     "keypair",
     "keypairs",
+    "reentrancy",
     "CABC",
     "CDEF"
   ],
