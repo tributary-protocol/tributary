@@ -70,9 +70,9 @@ describe("i18n persistence", () => {
     expect(readSavedLanguage()).toBe("tr");
   });
 
-  it("reads a saved locale from localStorage (id)", () => {
+  it("falls back to English when saved locale is unsupported (id)", () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, "id");
-    expect(readSavedLanguage()).toBe("id");
+    expect(readSavedLanguage()).toBe("en");
   });
 
   it("reads a saved locale from localStorage (vi)", () => {
