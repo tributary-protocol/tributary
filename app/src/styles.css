@@ -394,6 +394,29 @@ button.tooltip-trigger:focus-visible {
   color: var(--accent);
 }
 
+/* Duplicate-recipient warning */
+.dupe-input {
+  border-color: #d97706 !important;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.18);
+}
+
+.dupe-warn {
+  color: #d97706;
+  font-size: 15px;
+  flex-shrink: 0;
+  cursor: default;
+  line-height: 1;
+}
+
+.dupe-note {
+  color: #d97706;
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  background: rgba(217, 119, 6, 0.07);
+  border-radius: 8px;
+  padding: 7px 12px;
+  margin-top: 6px;
+}
+
 .hint {
   font-size: 13px;
   color: var(--muted);
@@ -787,3 +810,104 @@ select.lang-select:focus {
   margin-bottom: 4px;
   color: var(--accent);
 }
+
+/* ── ShareButton ──────────────────────────────────────────────── */
+
+.share-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.share-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.share-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.share-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  width: 240px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.share-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0;
+  align-self: flex-start;
+}
+
+.share-qr {
+  border-radius: 8px;
+  display: block;
+  width: 200px;
+  height: 200px;
+}
+
+.share-url-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.share-url {
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.share-copy-btn {
+  width: 100%;
+  padding: 7px 0;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.share-copy-btn:hover {
+  opacity: 0.88;
+}
+
+@media (max-width: 480px) {
+  .share-popover {
+    right: auto;
+    left: 0;
+    width: 220px;
+  }
+}
+
