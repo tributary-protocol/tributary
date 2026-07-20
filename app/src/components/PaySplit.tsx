@@ -34,19 +34,6 @@ export default function PaySplit({
 
   const selected = splits.find((s) => String(s.id) === splitId);
 
-  const assembleFee = useMemo(() => {
-    if (!wallet || splitId === "" || !amount || parseFloat(amount) <= 0) {
-      return null;
-    }
-    return () =>
-      walletClient(wallet).pay({
-        from: wallet,
-        id: BigInt(splitId),
-        token: token.contract,
-        amount: toStroops(amount),
-      });
-  }, [wallet, splitId, amount, token]);
-
   useEffect(() => {
     if (selectedSplitId !== undefined) {
       setSplitId(selectedSplitId);
