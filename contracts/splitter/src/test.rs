@@ -925,6 +925,48 @@ fn immutable_split_cannot_be_updated() {
 }
 
 #[test]
+fn update_split_rejects_while_balance_outstanding() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+    let carol = Address::generate(&s.env);
+    let mallory = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 10_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&bob), acct(&carol)],
+        &vec![&s.env, 5_000, 5_000],
+        &Some(controller.clone()),
+    );
+
+    s.client.deposit(&payer, &id, &token_id, &10_000);
+
+    // The controller cannot redirect the routing table while the deposit
+    // is still sitting in escrow.
+    let result =
+        s.client
+            .try_update_split(&id, &vec![&s.env, acct(&mallory)], &vec![&s.env, 10_000]);
+    assert_eq!(result, Err(Ok(Error::SplitHasBalance)));
+
+    // Distributing clears the balance, so the update is allowed afterwards...
+    s.client.distribute(&id, &token_id);
+    assert_eq!(token_client.balance(&bob), 5_000);
+    assert_eq!(token_client.balance(&carol), 5_000);
+
+    s.client
+        .update_split(&id, &vec![&s.env, acct(&mallory)], &vec![&s.env, 10_000]);
+    let split = s.client.get_split(&id);
+    assert_eq!(split.recipients, vec![&s.env, acct(&mallory)]);
+
+    // ...and Mallory only ever sees money deposited after she became a
+    // recipient, never the balance that was already paid out to Bob and Carol.
+    assert_eq!(token_client.balance(&mallory), 0);
+}
+
+#[test]
 fn every_error_code_maps_to_its_triggering_call() {
     let s = setup();
     let creator = Address::generate(&s.env);
