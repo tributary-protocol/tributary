@@ -58,6 +58,10 @@
     "summarises",
     "keypair",
     "keypairs",
+<<<<<<< HEAD
+=======
+    "reentrancy",
+>>>>>>> 151b253 (fix(ci): add reentrancy to cspell dictionary and fix SECURITY.md link)
     "CABC",
     "CDEF"
   ],

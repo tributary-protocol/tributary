@@ -58,7 +58,7 @@ export default function ManageSplit({
     let active = true;
     readClient()
       .pending_controller({ id: BigInt(splitId) })
-      .then(({ result }: any) => {
+      .then(({ result }) => {
         if (active) setPendingAddr(result ?? null);
       })
       .catch(() => {});
