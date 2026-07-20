@@ -1,6 +1,25 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type Language = "en" | "vi";
+export type Language = "en" | "vi" | "it";
+
+export const LANGUAGE_STORAGE_KEY = "tributary-lang";
+
+export function readSavedLanguage(): Language {
+  if (typeof localStorage === "undefined") {
+    return "en";
+  }
+
+  const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+  return saved === "vi" || saved === "it" || saved === "en" ? saved : "en";
+}
+
+export function persistLanguage(lang: Language) {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+}
 
 const translations = {
   en: {
@@ -44,6 +63,11 @@ const translations = {
     payFailed: "Payment failed.",
     payButton: "Pay",
     pickSplitAndAmount: "Pick a split and an amount.",
+    trustlineWarningTitle: "Cannot pay in {token}",
+    trustlineWarningItem: "{address} has no {token} trustline. They must add it before this split can be paid in {token}.",
+    trustlineWarningHint: "The payment is blocked until all recipients can receive this token.",
+    trustlineNoticeTitle: "Trustline check inconclusive",
+    trustlineNoticeHint: "Could not verify trustlines for some recipients. The payment may fail if they cannot receive this token.",
     // EscrowCard
     escrowTitle: "Escrow",
     escrowDesc: "Park funds in a split now, pay everyone out later.",
@@ -142,6 +166,11 @@ const translations = {
     payFailed: "Thanh toán thất bại.",
     payButton: "Thanh toán",
     pickSplitAndAmount: "Hãy chọn một danh sách chia và số lượng.",
+    trustlineWarningTitle: "Không thể thanh toán bằng {token}",
+    trustlineWarningItem: "{address} chưa có trustline cho {token}. Họ phải thêm trustline trước khi danh sách chia này có thể được thanh toán bằng {token}.",
+    trustlineWarningHint: "Thanh toán bị chặn cho đến khi tất cả người nhận có thể nhận được token này.",
+    trustlineNoticeTitle: "Không thể xác minh trustline",
+    trustlineNoticeHint: "Không thể xác minh trustline cho một số người nhận. Thanh toán có thể thất bại nếu họ không thể nhận token này.",
     // EscrowCard
     escrowTitle: "Ký quỹ",
     escrowDesc: "Gửi tiền vào một danh sách chia bây giờ, thanh toán cho mọi người sau.",
@@ -199,6 +228,109 @@ const translations = {
     // Footer
     contractOnTestnet: "Hợp đồng trên testnet",
   },
+  it: {
+    // Header & Navigation
+    connectWallet: "Connetti Freighter",
+    github: "GitHub",
+    testnet: "Testnet",
+    // Intro
+    introTitle: "Dividi i pagamenti su Stellar",
+    introDesc: "Una transazione in entrata, ogni destinatario pagato per la sua quota. In esecuzione su testnet.",
+    // ActionPanel tabs
+    tabCreate: "Crea",
+    tabPay: "Paga",
+    tabEscrow: "Deposito",
+    tabManage: "Gestisci",
+    // CreateSplit
+    createTitle: "Crea una divisione",
+    createEditableLabel: "Posso modificare questa divisione in seguito (deseleziona per bloccarla per sempre)",
+    createButton: "Crea divisione",
+    waitingForSignature: "In attesa di firma…",
+    connectWalletFirst: "Connetti prima il tuo portafoglio.",
+    splitCreated: "Divisione #{id} creata.",
+    contractRejectedSplit: "Il contratto ha rifiutato la divisione.",
+    // RecipientEditor
+    sharesTotalError: "Le quote devono sommare al 100%.",
+    sharesGreaterZeroError: "Le quote devono essere maggiori di zero.",
+    recipientRequiredError: "Ogni destinatario ha bisogno di un indirizzo o di un id di divisione.",
+    recipientFormatError: "Gli indirizzi dei destinatari devono essere chiavi di account G….",
+    kindAddress: "Indirizzo",
+    kindSplit: "Divisione",
+    placeholderAddress: "Indirizzo destinatario G…",
+    placeholderSplit: "Id divisione",
+    addRecipient: "Aggiungi destinatario",
+    pctOfTotal: "{pct}% del 100%",
+    // PaySplit
+    payTitle: "Paga tramite una divisione",
+    chooseSplit: "Scegli divisione",
+    recipientsCount: "{count} destinatari",
+    amount: "Importo",
+    paySuccess: "Pagati {amount} {token} tramite la divisione #{id}.",
+    payFailed: "Pagamento fallito.",
+    payButton: "Paga",
+    pickSplitAndAmount: "Scegli una divisione e un importo.",
+    trustlineWarningTitle: "Impossibile pagare in {token}",
+    trustlineWarningItem: "{address} non ha una trustline per {token}. Deve aggiungerla prima che questa divisione possa essere pagata in {token}.",
+    trustlineWarningHint: "Il pagamento è bloccato finché tutti i destinatari non potranno ricevere questo token.",
+    trustlineNoticeTitle: "Controllo trustline inconcludente",
+    trustlineNoticeHint: "Impossibile verificare le trustline per alcuni destinatari. Il pagamento potrebbe fallire se non possono ricevere questo token.",
+    // EscrowCard
+    escrowTitle: "Deposito",
+    escrowDesc: "Parcheggia i fondi in una divisione ora, paga tutti più tardi.",
+    pending: "In attesa: {amount} {token}",
+    depositButton: "Deposita",
+    distributeButton: "Distribuisci",
+    distributeSuccess: "Distribuiti {amount} {token} a tutti i destinatari.",
+    distributeFailed: "Niente da distribuire.",
+    depositSuccess: "Depositati {amount} {token}.",
+    depositFailed: "Deposito fallito.",
+    pickSplit: "Scegli una divisione.",
+    working: "Elaborazione…",
+    // ManageSplit
+    manageTitle: "Gestisci le tue divisioni",
+    chooseSplitControl: "Scegli la divisione che controlli",
+    updateButton: "Aggiorna divisione",
+    placeholderController: "Nuovo controllore G…",
+    transferButton: "Trasferisci",
+    lockButton: "Blocca per sempre",
+    confirmLockButton: "Conferma blocco",
+    updateSuccess: "Divisione aggiornata.",
+    updateFailed: "Aggiornamento rifiutato.",
+    transferSuccess: "Controllo trasferito.",
+    transferFailed: "Trasferimento rifiutato.",
+    lockConfirmPrompt: "Il blocco è permanente. Premi di nuovo per confermare.",
+    lockSuccess: "Divisione bloccata per sempre.",
+    lockFailed: "Blocco rifiutato.",
+    controllerFormatError: "Il controllore deve essere una chiave di account G….",
+    // SplitList & Detail
+    loadingSplits: "Caricamento divisioni…",
+    noSplitsOnContract: "Ancora nessuna divisione su questo contratto.",
+    noSplitsPrompt: "Connetti Freighter su testnet, apri la scheda Crea e registra la prima. Gli XLM di testnet sono gratuiti tramite friendbot, quindi non costa nulla provare.",
+    recentSplits: "Divisioni recenti",
+    copy: "Copia",
+    yours: "tua",
+    mutable: "modificabile",
+    locked: "bloccata",
+    nestedSplit: "divisione #{id}",
+    detailEscrow: "deposito",
+    detailController: "controllore: {controller}",
+    detailHistoryTitle: "Cronologia Pagamenti & Distribuzioni",
+    detailHistoryEmpty: "Nessun pagamento o distribuzione ancora.",
+    detailHistoryLoading: "Caricamento cronologia…",
+    // Activity
+    recentActivity: "Attività recente",
+    exportCsv: "Esporta CSV",
+    activityCreated: "creata",
+    activityPaid: "pagata",
+    activityUpdated: "aggiornata",
+    activityDeposit: "deposito",
+    activityDistributed: "distribuita",
+    activityControlMoved: "controllo trasferito",
+    activityTx: "tx",
+    activitySplitNum: "divisione #{id}",
+    // Footer
+    contractOnTestnet: "Contratto su testnet",
+  },
 };
 
 interface I18nContextType {
@@ -210,14 +342,11 @@ interface I18nContextType {
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem("tributary-lang");
-    return (saved === "vi" || saved === "en") ? saved : "en";
-  });
+  const [language, setLanguageState] = useState<Language>(() => readSavedLanguage());
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem("tributary-lang", lang);
+    persistLanguage(lang);
   };
 
   const t = (key: string, variables?: Record<string, string | number>): string => {
