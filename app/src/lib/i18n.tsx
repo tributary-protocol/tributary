@@ -21,6 +21,25 @@ export function persistLanguage(lang: Language) {
   localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
 }
 
+export const LANGUAGE_STORAGE_KEY = "tributary-lang";
+
+export function readSavedLanguage(): Language {
+  if (typeof localStorage === "undefined") {
+    return "en";
+  }
+
+  const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+  return saved === "vi" || saved === "en" ? saved : "en";
+}
+
+export function persistLanguage(lang: Language) {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+}
+
 const translations = {
   en: {
     // Header & Navigation

@@ -17,6 +17,7 @@ Valid reports get credited in the release notes once a fix ships, if you want th
 ## Threat Model & Security Architecture
 
 For detailed information on trust assumptions, escrow risks, token assumptions, and known limitations, please refer to the [Security & Threat Model](docs/security-threat-model.md) documentation.
+
 ## Trust model: escrow and mutable splits
 
 A split with a `controller` is mutable: the controller can call `update_split`
