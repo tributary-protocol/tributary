@@ -66,7 +66,7 @@ Early days. The core contract works, is tested and runs on testnet, but it is no
 ## Try it in two minutes
 
 1. Install the [Freighter](https://freighter.app) extension and switch it to Testnet.
-2. Fund your account for free at [friendbot](https://lab.stellar.org/account/fund?$=network$id=testnet).
+2. Fund your account for free at [friendbot](https://lab.stellar.org/account/fund?$=network$id=testnet) (see [docs/funding.md](docs/funding.md) for a detailed walkthrough).
 3. Open [tributary-omega.vercel.app](https://tributary-omega.vercel.app), connect, and create a split from the Create tab.
 4. Pay through it from the Pay tab and watch both balances land in one transaction.
 
