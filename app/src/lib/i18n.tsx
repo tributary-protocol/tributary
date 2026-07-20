@@ -2,6 +2,25 @@ import { createContext, useContext, useState, ReactNode } from "react";
 
 export type Language = "en" | "vi";
 
+export const LANGUAGE_STORAGE_KEY = "tributary-lang";
+
+export function readSavedLanguage(): Language {
+  if (typeof localStorage === "undefined") {
+    return "en";
+  }
+
+  const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+  return saved === "vi" || saved === "en" ? saved : "en";
+}
+
+export function persistLanguage(lang: Language) {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+}
+
 const translations = {
   en: {
     // Header & Navigation
@@ -220,14 +239,11 @@ interface I18nContextType {
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem("tributary-lang");
-    return (saved === "vi" || saved === "en") ? saved : "en";
-  });
+  const [language, setLanguageState] = useState<Language>(() => readSavedLanguage());
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem("tributary-lang", lang);
+    persistLanguage(lang);
   };
 
   const t = (key: string, variables?: Record<string, string | number>): string => {
