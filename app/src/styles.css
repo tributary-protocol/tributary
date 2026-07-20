@@ -811,6 +811,91 @@ select.lang-select:focus {
   color: var(--accent);
 }
 
+/* ── RefreshError ────────────────────────────────────────────── */
+
+.refresh-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: #1a1e2e;
+  border: 1px solid #3a4a70;
+  border-radius: 9px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.refresh-error-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+}
+
+.refresh-error-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.refresh-error-text {
+  flex: 1;
+}
+
+.refresh-error-message {
+  margin: 0;
+  color: var(--text);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.refresh-error-hint {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.refresh-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.refresh-error-retry {
+  padding: 6px 12px;
+  font-size: 12px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.refresh-error-retry:hover {
+  filter: brightness(1.08);
+}
+
+.refresh-error-dismiss {
+  padding: 4px 8px;
+  font-size: 14px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.refresh-error-dismiss:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
 /* ── ShareButton ──────────────────────────────────────────────── */
 
 .share-wrapper {
