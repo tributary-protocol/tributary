@@ -1,3 +1,15 @@
+import { useState, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { Routes, Route, Link } from "react-router-dom";
+import { motion } from "framer-motion";
+import { DashboardPage } from "./pages/DashboardPage";
+import { SplitPage } from "./pages/SplitPage";
+import { SplitList } from "./components/SplitList";
+import { Activity } from "./components/Activity";
+import { LanguageSwitcher } from "./components/LanguageSwitcher";
+import { shortAddress, connectWallet } from "./utils";
+import { REFRESH_MS, EXPLORER, CONTRACT_ID } from "./constants";
+
 export default function App() {
   const { t } = useTranslation();
   const [wallet, setWallet] = useState<string | null>(null);
