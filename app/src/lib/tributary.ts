@@ -263,6 +263,16 @@ export async function fetchActivityForSplit(
 }
 
 
+// ---------------------------------------------------------------------------
+// Trustline checking — see trustlines.ts
+// ---------------------------------------------------------------------------
+export type {
+  TrustlineStatus,
+  RecipientTrustline,
+  TrustlineCheckResult,
+} from "./trustlines";
+export { checkTrustlines } from "./trustlines";
+
 export function recipientLabel(r: Recipient): string {
   return r.tag === "Account"
     ? shortAddress(r.values[0])

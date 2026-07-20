@@ -1,5 +1,77 @@
 import { describe, expect, it } from "vitest";
-import { fromStroops, toStroops, ConversionError } from "./tributary";
+import {
+  ConversionError,
+  formatAmount,
+  fromStroops,
+  recipientLabel,
+  shortAddress,
+  splitPath,
+  toStroops,
+  tokenCode,
+  TOKENS,
+} from "./tributary";
+
+describe("tokenCode", () => {
+  it("returns the code for a known token contract", () => {
+    expect(tokenCode(TOKENS[0].contract)).toBe("XLM");
+    expect(tokenCode(TOKENS[1].contract)).toBe("USDC");
+  });
+
+  it("shortens unknown contracts and handles a missing contract", () => {
+    expect(tokenCode("CUNKNOWN1234567890")).toBe("CUNK…7890");
+    expect(tokenCode(undefined)).toBe("");
+  });
+});
+
+describe("recipientLabel", () => {
+  it("shortens account recipients", () => {
+    expect(
+      recipientLabel({
+        tag: "Account",
+        values: ["GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"],
+      }),
+    ).toBe("GABC…7890");
+  });
+
+  it("labels split recipients, including split zero", () => {
+    expect(recipientLabel({ tag: "Split", values: [0n] })).toBe("split #0");
+  });
+});
+
+describe("shortAddress", () => {
+  it("keeps the first and last four characters of a long address", () => {
+    expect(shortAddress("GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")).toBe(
+      "GABC…7890",
+    );
+  });
+
+  it("handles empty and shorter-than-eight-character addresses", () => {
+    expect(shortAddress("")).toBe("…");
+    expect(shortAddress("GABC")).toBe("GABC…GABC");
+  });
+});
+
+describe("splitPath", () => {
+  it("builds a route for a bigint split id", () => {
+    expect(splitPath(42n)).toBe("/split/42");
+  });
+
+  it("preserves string ids, including an empty id", () => {
+    expect(splitPath("0007")).toBe("/split/0007");
+    expect(splitPath("")).toBe("/split/");
+  });
+});
+
+describe("formatAmount", () => {
+  it("adds grouping and preserves a decimal fraction", () => {
+    expect(formatAmount("1234567.5")).toBe("1,234,567.5");
+  });
+
+  it("returns non-numeric and empty input unchanged", () => {
+    expect(formatAmount("not-an-amount")).toBe("not-an-amount");
+    expect(formatAmount("")).toBe("");
+  });
+});
 
 describe("fromStroops", () => {
   it("formats small values with up to 7 decimal places", () => {

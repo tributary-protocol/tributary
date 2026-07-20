@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   walletClient,
   toStroops,
   fromStroops,
   previewPayout,
   recipientLabel,
+  checkTrustlines,
+  shortAddress,
   TOKENS,
   SplitView,
+  TrustlineCheckResult,
 } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import TokenPicker from "./TokenPicker";
@@ -31,6 +34,11 @@ export default function PaySplit({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [amountError, setAmountError] = useState<string | null>(null);
+  const [trustlineResult, setTrustlineResult] =
+    useState<TrustlineCheckResult | null>(null);
+  const [trustlineChecking, setTrustlineChecking] = useState(false);
+  // Debounce timer ref so rapid token/split changes don't fire multiple RPC calls
+  const trustlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selected = splits.find((s) => String(s.id) === splitId);
 
@@ -40,6 +48,7 @@ export default function PaySplit({
     }
   }, [selectedSplitId]);
 
+  // Preview payout amounts whenever split or amount changes
   useEffect(() => {
     let active = true;
     setAmountError(null);
@@ -62,6 +71,40 @@ export default function PaySplit({
       active = false;
     };
   }, [splitId, amount]);
+
+  // Trustline check — debounced 400 ms, fired when split or token changes
+  useEffect(() => {
+    setTrustlineResult(null);
+    if (!selected) return;
+
+    if (trustlineTimer.current) clearTimeout(trustlineTimer.current);
+    trustlineTimer.current = setTimeout(() => {
+      setTrustlineChecking(true);
+      checkTrustlines(selected, token)
+        .then((result) => {
+          setTrustlineResult(result);
+        })
+        .catch(() => {
+          // Network failure — treat as inconclusive, do not block payment
+          setTrustlineResult({ warnings: [], hasErrors: true });
+        })
+        .finally(() => {
+          setTrustlineChecking(false);
+        });
+    }, 400);
+
+    return () => {
+      if (trustlineTimer.current) clearTimeout(trustlineTimer.current);
+    };
+  }, [splitId, token]);
+
+  // Derive blocking warnings (confirmed no-trustline) vs inconclusive notices
+  const blockingWarnings =
+    trustlineResult?.warnings.filter((w) => w.status === "no_trustline") ?? [];
+  const inconclusiveWarnings =
+    trustlineResult?.warnings.filter((w) => w.status === "inconclusive") ?? [];
+  // Only block the payment when there are confirmed missing trustlines
+  const hasBlockingWarnings = blockingWarnings.length > 0;
 
   async function submit() {
     if (!wallet) {
@@ -143,7 +186,40 @@ export default function PaySplit({
           </ul>
         </div>
       )}
-      <button disabled={busy || !!amountError} onClick={submit}>
+
+      {/* Trustline warnings — shown once a split and token are both chosen */}
+      {selected && !trustlineChecking && blockingWarnings.length > 0 && (
+        <div className="note trustline-warn" role="alert">
+          <strong>{t("trustlineWarningTitle", { token: token.code })}</strong>
+          <ul>
+            {blockingWarnings.map((w) => (
+              <li key={w.address}>
+                {t("trustlineWarningItem", {
+                  address: shortAddress(w.address),
+                  token: token.code,
+                })}
+              </li>
+            ))}
+          </ul>
+          <span>{t("trustlineWarningHint")}</span>
+        </div>
+      )}
+      {selected && !trustlineChecking && inconclusiveWarnings.length > 0 && (
+        <div className="note trustline-notice" role="status">
+          <strong>{t("trustlineNoticeTitle")}</strong>
+          <ul>
+            {inconclusiveWarnings.map((w) => (
+              <li key={w.address}>{shortAddress(w.address)}</li>
+            ))}
+          </ul>
+          <span>{t("trustlineNoticeHint")}</span>
+        </div>
+      )}
+
+      <button
+        disabled={busy || !!amountError || hasBlockingWarnings}
+        onClick={submit}
+      >
         {busy && <span className="btn-spinner" />}
         {busy ? t("waitingForSignature") : t("payButton")}
       </button>

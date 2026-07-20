@@ -55,7 +55,11 @@
     "USCIHMXQDAMA",
     "CDLZ",
     "misroutes",
-    "summarises"
+    "summarises",
+    "keypair",
+    "keypairs",
+    "CABC",
+    "CDEF"
   ],
   "ignoreWords": [],
   "ignorePaths": [

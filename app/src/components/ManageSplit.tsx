@@ -59,7 +59,7 @@ export default function ManageSplit({
     let active = true;
     readClient()
       .pending_controller({ id: BigInt(splitId) })
-      .then(({ result }) => {
+      .then(({ result }: any) => {
         if (active) setPendingAddr(result ?? null);
       })
       .catch(() => {});
@@ -75,6 +75,15 @@ export default function ManageSplit({
     setMessage(null);
     const split = mine.find((s) => String(s.id) === id);
     setRows(split ? toRows(split) : []);
+  }
+
+  // Once control is gone the wallet can no longer act on this split, so
+  // drop the selection instead of leaving a dead editor on screen.
+  function clearSelection() {
+    setSplitId("");
+    setRows([]);
+    setTransferTo("");
+    setConfirmLock(false);
   }
 
   async function run(action: () => Promise<string>) {
@@ -108,14 +117,20 @@ export default function ManageSplit({
   }
 
   async function proposeTransfer() {
-    if (!/^G[A-Z2-7]{55}$/.test(transferTo.trim())) {
+    const to = transferTo.trim();
+    if (!/^G[A-Z2-7]{55}$/.test(to)) {
       setMessage(t("controllerFormatError"));
       return;
     }
+    if (to === wallet) {
+      setMessage("That address already controls this split.");
+      return;
+    }
+    const id = splitId;
     await run(async () => {
       const tx = await walletClient(wallet!).transfer_control({
-        id: BigInt(splitId),
-        new_controller: transferTo.trim(),
+        id: BigInt(id),
+        new_controller: to,
       });
       const { result } = await tx.signAndSend();
       return result.isOk()
@@ -150,14 +165,18 @@ export default function ManageSplit({
       setMessage(t("lockConfirmPrompt"));
       return;
     }
+    const id = splitId;
     await run(async () => {
       const tx = await walletClient(wallet!).transfer_control({
-        id: BigInt(splitId),
+        id: BigInt(id),
         new_controller: undefined,
       });
       const { result } = await tx.signAndSend();
-      return result.isOk() ? t("lockSuccess") : t("lockFailed");
+      if (!result.isOk()) return t("lockFailed");
+      clearSelection();
+      return t("lockSuccess");
     });
+    setConfirmLock(false);
   }
 
   const isPendingTarget = pendingAddr === wallet;
@@ -242,6 +261,7 @@ export default function ManageSplit({
               placeholder={t("placeholderController")}
               value={transferTo}
               onChange={(e) => setTransferTo(e.target.value)}
+              disabled={confirmLock}
             />
             <button className="ghost" disabled={busy || isPendingTarget} onClick={proposeTransfer}>
               {busy && <span className="btn-spinner" />}
@@ -258,8 +278,27 @@ export default function ManageSplit({
               {confirmLock ? t("confirmLockButton") : t("lockButton")}
             </button>
           </div>
-          <FeeHint assemble={transferFee} labelKey="estimatedTransferFee" />
-          <FeeHint assemble={lockFee} labelKey="estimatedLockFee" />
+          {confirmLock && (
+            <div className="lock-confirm" role="alertdialog" aria-live="assertive">
+              <p>
+                <strong>Lock split #{splitId} permanently?</strong> Nobody —
+                including you — will ever be able to edit its recipients,
+                transfer control, or close it. This cannot be undone.
+              </p>
+              <div className="row">
+                <button className="danger" disabled={busy} onClick={lock}>
+                  Yes, lock it forever
+                </button>
+                <button
+                  className="ghost"
+                  disabled={busy}
+                  onClick={() => setConfirmLock(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
       {message && <p className="note">{message}</p>}

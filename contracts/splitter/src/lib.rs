@@ -71,6 +71,10 @@ pub enum Error {
     /// contract stores. Can only happen if a share exceeds `TOTAL_SHARES`, which
     /// `validate` forbids, but we surface it as a typed error rather than panic.
     ArithmeticOverflow = 11,
+    /// Code 12. Raised by `close_split` when the split still holds a
+    /// balance, and by `update_split` when the split holds a balance in any
+    /// token — the routing table cannot be changed out from under money that
+    /// was deposited against it. Call `distribute` first.
     SplitHasBalance = 12,
     /// Code 13. The cascade depth exceeds the maximum allowed limit.
     MaxDepthExceeded = 13,
@@ -317,6 +321,12 @@ impl Splitter {
     }
 
     /// Replaces the recipients and shares of a mutable split.
+    ///
+    /// Rejected while the split holds a balance in any token: a depositor
+    /// sees the routing table at deposit time, and letting the controller
+    /// swap it out before `distribute` runs would let them redirect money
+    /// that already arrived. Call `distribute` for every token in
+    /// `held_tokens` first.
     pub fn update_split(
         env: Env,
         id: u64,
@@ -326,6 +336,9 @@ impl Splitter {
         let mut split = load(&env, id)?;
         let controller = split.controller.clone().ok_or(Error::SplitImmutable)?;
         controller.require_auth();
+        if !Self::held_tokens(env.clone(), id).is_empty() {
+            return Err(Error::SplitHasBalance);
+        }
         validate(&env, id, &recipients, &shares)?;
         split.recipients = recipients;
         split.shares = shares;
@@ -448,6 +461,12 @@ impl Splitter {
     /// Credits the amount the vault's balance actually increased by rather
     /// than the requested `amount`, so fee-on-transfer tokens that deliver
     /// less than requested cannot over-credit the split.
+    ///
+    /// The routing table cannot be redirected out from under this deposit:
+    /// `update_split` refuses to run while the split holds a balance in any
+    /// token, so whoever controls the split must `distribute` first. This
+    /// only matters for mutable splits (`controller: Some(_)`) — immutable
+    /// splits have no routing table to change in the first place.
     pub fn deposit(
         env: Env,
         from: Address,
