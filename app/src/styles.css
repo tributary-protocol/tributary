@@ -406,6 +406,20 @@ button.small {
   border-radius: 999px;
 }
 
+button.fill {
+  flex: none;
+  white-space: nowrap;
+  color: var(--accent);
+  border-color: var(--accent);
+  opacity: 0.85;
+}
+
+button.fill:hover:not(:disabled) {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .templates {
   flex-wrap: wrap;
 }

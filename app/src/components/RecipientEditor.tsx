@@ -41,6 +41,15 @@ export function toShares(rows: Row[]): number[] {
   return rows.map((r) => Math.round(parseFloat(r.percent) * 100));
 }
 
+/** Returns the percent that would fill the 100% total if assigned to row i. */
+export function fillRemaining(rows: Row[], i: number): number {
+  const othersTotal = rows.reduce(
+    (sum, r, j) => (j === i ? sum : sum + (parseFloat(r.percent) || 0)),
+    0,
+  );
+  return Math.max(0, 100 - othersTotal);
+}
+
 export default function RecipientEditor({
   rows,
   onChange,
@@ -96,11 +105,45 @@ export default function RecipientEditor({
               onClick={() => onChange(rows.filter((_, j) => j !== i))}
               aria-label="Remove recipient"
             >
-              ×
-            </button>
-          )}
-        </div>
-      ))}
+              <option value="address">Address</option>
+              <option value="split">Split</option>
+            </select>
+            <input
+              placeholder={row.kind === "address" ? "G… recipient address" : "Split id"}
+              value={row.value}
+              onChange={(e) => setRow(i, { value: e.target.value })}
+            />
+            <input
+              className="pct"
+              type="number"
+              min="0"
+              max="100"
+              value={row.percent}
+              onChange={(e) => setRow(i, { percent: e.target.value })}
+            />
+            <span className="unit">%</span>
+            {canFill && (
+              <button
+                className="ghost small fill"
+                title={`Assign remaining ${Number(remaining.toFixed(2))}% to this recipient`}
+                aria-label={`Fill remaining ${Number(remaining.toFixed(2))}% to this recipient`}
+                onClick={() => setRow(i, { percent: String(Number(remaining.toFixed(2))) })}
+              >
+                Fill
+              </button>
+            )}
+            {rows.length > 1 && (
+              <button
+                className="ghost"
+                onClick={() => onChange(rows.filter((_, j) => j !== i))}
+                aria-label="Remove recipient"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        );
+      })}
       <div className="row actions">
         <button
           className="ghost"
