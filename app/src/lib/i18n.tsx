@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type Language = "en" | "vi";
+export type Language = "en" | "vi" | "it";
 
 export const LANGUAGE_STORAGE_KEY = "tributary-lang";
 
@@ -10,7 +10,7 @@ export function readSavedLanguage(): Language {
   }
 
   const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return saved === "vi" || saved === "en" ? saved : "en";
+  return saved === "vi" || saved === "it" || saved === "en" ? saved : "en";
 }
 
 export function persistLanguage(lang: Language) {
@@ -227,6 +227,109 @@ const translations = {
     activitySplitNum: "danh sách chia #{id}",
     // Footer
     contractOnTestnet: "Hợp đồng trên testnet",
+  },
+  it: {
+    // Header & Navigation
+    connectWallet: "Connetti Freighter",
+    github: "GitHub",
+    testnet: "Testnet",
+    // Intro
+    introTitle: "Dividi i pagamenti su Stellar",
+    introDesc: "Una transazione in entrata, ogni destinatario pagato per la sua quota. In esecuzione su testnet.",
+    // ActionPanel tabs
+    tabCreate: "Crea",
+    tabPay: "Paga",
+    tabEscrow: "Deposito",
+    tabManage: "Gestisci",
+    // CreateSplit
+    createTitle: "Crea una divisione",
+    createEditableLabel: "Posso modificare questa divisione in seguito (deseleziona per bloccarla per sempre)",
+    createButton: "Crea divisione",
+    waitingForSignature: "In attesa di firma…",
+    connectWalletFirst: "Connetti prima il tuo portafoglio.",
+    splitCreated: "Divisione #{id} creata.",
+    contractRejectedSplit: "Il contratto ha rifiutato la divisione.",
+    // RecipientEditor
+    sharesTotalError: "Le quote devono sommare al 100%.",
+    sharesGreaterZeroError: "Le quote devono essere maggiori di zero.",
+    recipientRequiredError: "Ogni destinatario ha bisogno di un indirizzo o di un id di divisione.",
+    recipientFormatError: "Gli indirizzi dei destinatari devono essere chiavi di account G….",
+    kindAddress: "Indirizzo",
+    kindSplit: "Divisione",
+    placeholderAddress: "Indirizzo destinatario G…",
+    placeholderSplit: "Id divisione",
+    addRecipient: "Aggiungi destinatario",
+    pctOfTotal: "{pct}% del 100%",
+    // PaySplit
+    payTitle: "Paga tramite una divisione",
+    chooseSplit: "Scegli divisione",
+    recipientsCount: "{count} destinatari",
+    amount: "Importo",
+    paySuccess: "Pagati {amount} {token} tramite la divisione #{id}.",
+    payFailed: "Pagamento fallito.",
+    payButton: "Paga",
+    pickSplitAndAmount: "Scegli una divisione e un importo.",
+    trustlineWarningTitle: "Impossibile pagare in {token}",
+    trustlineWarningItem: "{address} non ha una trustline per {token}. Deve aggiungerla prima che questa divisione possa essere pagata in {token}.",
+    trustlineWarningHint: "Il pagamento è bloccato finché tutti i destinatari non potranno ricevere questo token.",
+    trustlineNoticeTitle: "Controllo trustline inconcludente",
+    trustlineNoticeHint: "Impossibile verificare le trustline per alcuni destinatari. Il pagamento potrebbe fallire se non possono ricevere questo token.",
+    // EscrowCard
+    escrowTitle: "Deposito",
+    escrowDesc: "Parcheggia i fondi in una divisione ora, paga tutti più tardi.",
+    pending: "In attesa: {amount} {token}",
+    depositButton: "Deposita",
+    distributeButton: "Distribuisci",
+    distributeSuccess: "Distribuiti {amount} {token} a tutti i destinatari.",
+    distributeFailed: "Niente da distribuire.",
+    depositSuccess: "Depositati {amount} {token}.",
+    depositFailed: "Deposito fallito.",
+    pickSplit: "Scegli una divisione.",
+    working: "Elaborazione…",
+    // ManageSplit
+    manageTitle: "Gestisci le tue divisioni",
+    chooseSplitControl: "Scegli la divisione che controlli",
+    updateButton: "Aggiorna divisione",
+    placeholderController: "Nuovo controllore G…",
+    transferButton: "Trasferisci",
+    lockButton: "Blocca per sempre",
+    confirmLockButton: "Conferma blocco",
+    updateSuccess: "Divisione aggiornata.",
+    updateFailed: "Aggiornamento rifiutato.",
+    transferSuccess: "Controllo trasferito.",
+    transferFailed: "Trasferimento rifiutato.",
+    lockConfirmPrompt: "Il blocco è permanente. Premi di nuovo per confermare.",
+    lockSuccess: "Divisione bloccata per sempre.",
+    lockFailed: "Blocco rifiutato.",
+    controllerFormatError: "Il controllore deve essere una chiave di account G….",
+    // SplitList & Detail
+    loadingSplits: "Caricamento divisioni…",
+    noSplitsOnContract: "Ancora nessuna divisione su questo contratto.",
+    noSplitsPrompt: "Connetti Freighter su testnet, apri la scheda Crea e registra la prima. Gli XLM di testnet sono gratuiti tramite friendbot, quindi non costa nulla provare.",
+    recentSplits: "Divisioni recenti",
+    copy: "Copia",
+    yours: "tua",
+    mutable: "modificabile",
+    locked: "bloccata",
+    nestedSplit: "divisione #{id}",
+    detailEscrow: "deposito",
+    detailController: "controllore: {controller}",
+    detailHistoryTitle: "Cronologia Pagamenti & Distribuzioni",
+    detailHistoryEmpty: "Nessun pagamento o distribuzione ancora.",
+    detailHistoryLoading: "Caricamento cronologia…",
+    // Activity
+    recentActivity: "Attività recente",
+    exportCsv: "Esporta CSV",
+    activityCreated: "creata",
+    activityPaid: "pagata",
+    activityUpdated: "aggiornata",
+    activityDeposit: "deposito",
+    activityDistributed: "distribuita",
+    activityControlMoved: "controllo trasferito",
+    activityTx: "tx",
+    activitySplitNum: "divisione #{id}",
+    // Footer
+    contractOnTestnet: "Contratto su testnet",
   },
 };
 

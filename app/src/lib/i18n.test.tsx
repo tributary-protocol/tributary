@@ -65,9 +65,14 @@ describe("i18n persistence", () => {
     expect(readSavedLanguage()).toBe("en");
   });
 
-  it("reads a saved locale from localStorage", () => {
+  it("reads a saved locale from localStorage (vi)", () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, "vi");
     expect(readSavedLanguage()).toBe("vi");
+  });
+
+  it("reads a saved locale from localStorage (it)", () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, "it");
+    expect(readSavedLanguage()).toBe("it");
   });
 
   it("persists locale selection directly", () => {
