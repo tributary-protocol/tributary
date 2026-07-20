@@ -1,5 +1,5 @@
 import { Buffer } from "buffer";
-import { Address } from "@stellar/stellar-sdk";
+import { Address, xdr, scValToNative } from "@stellar/stellar-sdk";
 import {
   AssembledTransaction,
   Client as ContractClient,
@@ -53,8 +53,15 @@ export const Errors = {
   10: {message:"BadChildSplit"},
   11: {message:"ArithmeticOverflow"},
   12: {message:"SplitHasBalance"},
-  13: {message:"NoPendingTransfer"},
+  13: {message:"MaxDepthExceeded"},
+  14: {message:"TooManyTokens"},
+  15: {message:"NoPendingTransfer"},
 }
+
+export function decode(code: number): string | undefined {
+  return (Errors as Record<number, { message: string }>)[code]?.message;
+}
+
 
 
 export interface Split {
@@ -288,4 +295,170 @@ export async function waitForConfirmation(
   throw new Error(
     `Transaction ${txHash} was not confirmed within ${timeout / 1_000}s`,
   );
+}
+
+export interface SplitCreatedEvent {
+  type: "SplitCreated";
+  id: bigint;
+  creator: string;
+}
+
+export interface SplitPaidEvent {
+  type: "SplitPaid";
+  id: bigint;
+  token: string;
+  amount: bigint;
+}
+
+export interface SplitUpdatedEvent {
+  type: "SplitUpdated";
+  id: bigint;
+}
+
+export interface SplitClosedEvent {
+  type: "SplitClosed";
+  id: bigint;
+}
+
+export interface ControlTransferredEvent {
+  type: "ControlTransferred";
+  id: bigint;
+  new_controller: string | null;
+}
+
+export interface DepositedEvent {
+  type: "Deposited";
+  id: bigint;
+  token: string;
+  amount: bigint;
+}
+
+export interface DistributedEvent {
+  type: "Distributed";
+  id: bigint;
+  token: string;
+  amount: bigint;
+}
+
+export type ContractEvent =
+  | SplitCreatedEvent
+  | SplitPaidEvent
+  | SplitUpdatedEvent
+  | SplitClosedEvent
+  | ControlTransferredEvent
+  | DepositedEvent
+  | DistributedEvent;
+
+function parseScVal(val: any): any {
+  if (typeof val === "string") {
+    try {
+      return xdr.ScVal.fromXDR(val, "base64");
+    } catch {
+      return val;
+    }
+  }
+  if (val && typeof val === "object") {
+    if (typeof val.xdr === "string") {
+      try {
+        return xdr.ScVal.fromXDR(val.xdr, "base64");
+      } catch {
+        return val;
+      }
+    }
+    if (typeof val.toXDR === "function") {
+      return val;
+    }
+  }
+  return val;
+}
+
+/**
+ * Decodes a raw contract event from RPC or indexer into a typed event object.
+ * Returns null if the event is not a recognized contract event or cannot be parsed.
+ */
+export function decodeEvent(event: {
+  topic: ReadonlyArray<any>;
+  value: any;
+}): ContractEvent | null {
+  if (!event || !Array.isArray(event.topic) || event.topic.length === 0) {
+    return null;
+  }
+
+  try {
+    const parsedTopics = event.topic.map(t => parseScVal(t));
+    const parsedValue = parseScVal(event.value);
+
+    const nativeTopics = parsedTopics.map(t => {
+      if (t && typeof t.toXDR === "function") {
+        return scValToNative(t);
+      }
+      return t;
+    });
+
+    const type = nativeTopics[0];
+    if (typeof type !== "string") {
+      return null;
+    }
+
+    const idVal = nativeTopics[1];
+    if (idVal === undefined || idVal === null) {
+      return null;
+    }
+    const id = typeof idVal === "bigint" ? idVal : BigInt(idVal);
+
+    let nativeValue = parsedValue;
+    if (parsedValue && typeof parsedValue.toXDR === "function") {
+      nativeValue = scValToNative(parsedValue);
+    }
+
+    switch (type) {
+      case "SplitCreated":
+        return {
+          type: "SplitCreated",
+          id,
+          creator: nativeValue.creator,
+        };
+      case "SplitPaid":
+        return {
+          type: "SplitPaid",
+          id,
+          token: nativeValue.token,
+          amount: typeof nativeValue.amount === "bigint" ? nativeValue.amount : BigInt(nativeValue.amount),
+        };
+      case "SplitUpdated":
+        return {
+          type: "SplitUpdated",
+          id,
+        };
+      case "SplitClosed":
+        return {
+          type: "SplitClosed",
+          id,
+        };
+      case "ControlTransferred":
+        return {
+          type: "ControlTransferred",
+          id,
+          new_controller: nativeValue.new_controller ?? null,
+        };
+      case "Deposited":
+        return {
+          type: "Deposited",
+          id,
+          token: nativeValue.token,
+          amount: typeof nativeValue.amount === "bigint" ? nativeValue.amount : BigInt(nativeValue.amount),
+        };
+      case "Distributed":
+        return {
+          type: "Distributed",
+          id,
+          token: nativeValue.token,
+          amount: typeof nativeValue.amount === "bigint" ? nativeValue.amount : BigInt(nativeValue.amount),
+        };
+      default:
+        return null;
+    }
+  } catch (err) {
+    return null;
+  }
 }

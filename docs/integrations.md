@@ -27,6 +27,40 @@ await client.pay_many({
 
 Create a mutable split with your multisig as controller and each member as a recipient. Revenue sources `deposit` into it whenever money arrives. Once per month anyone calls `distribute`. Adjusting shares when the team changes is one `update_split` from the controller.
 
+### Transfer control, then lock the split
+
+Control transfers use a two-step handoff: the current controller proposes a new
+controller, and the proposed controller accepts. The new controller can then
+lock the split by transferring control to `undefined`, the TypeScript encoding
+of the contract's `None` value:
+
+```ts
+// The current controller proposes the handoff.
+const propose = await aliceClient.transfer_control({
+  id: payrollSplit,
+  new_controller: bob,
+});
+await propose.signAndSend({ signTransaction: signAsAlice });
+
+// The proposed controller accepts and becomes the current controller.
+const accept = await bobClient.accept_control({ id: payrollSplit });
+await accept.signAndSend({ signTransaction: signAsBob });
+
+// Only the current controller can lock the split.
+const lock = await bobClient.transfer_control({
+  id: payrollSplit,
+  new_controller: undefined,
+});
+await lock.signAndSend({ signTransaction: signAsBob });
+```
+
+Wait for each transaction to confirm before constructing the next one because
+each call depends on the controller state written by the previous call. The
+last call sets `controller` to `None` and is irreversible: no address can call
+`update_split`, `transfer_control`, or `close_split` afterward. Check the
+recipients and shares before locking; a mistaken configuration cannot be
+recovered by assigning a new controller.
+
 ## Referrer pools with nesting
 
 Make the referrer share its own split: the marketplace split routes 2% to `Split(referrerPool)`, and the pool split divides that among active referrers. Updating the referrer roster never touches the marketplace split.
