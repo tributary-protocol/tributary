@@ -1,4 +1,5 @@
 import { Recipient } from "../lib/tributary";
+import Tooltip from "./Tooltip";
 
 export interface Row {
   kind: "address" | "split";
@@ -10,19 +11,22 @@ export function rowsTotal(rows: Row[]): number {
   return rows.reduce((sum, r) => sum + (parseFloat(r.percent) || 0), 0);
 }
 
-export function rowsError(rows: Row[]): string | null {
+export function rowsError(
+  rows: Row[],
+  t?: (key: string, variables?: Record<string, string | number>) => string,
+): string | null {
   if (Math.abs(rowsTotal(rows) - 100) > 0.001) {
-    return "Shares must add up to 100%.";
+    return t ? t("shareTotalError") : "Shares must add up to 100%.";
   }
   if (rows.some((r) => r.value.trim() === "")) {
-    return "Every recipient needs an address or split id.";
+    return t ? t("emptyRecipientError") : "Every recipient needs an address or split id.";
   }
   if (
     rows.some(
       (r) => r.kind === "address" && !/^G[A-Z2-7]{55}$/.test(r.value.trim()),
     )
   ) {
-    return "Recipient addresses must be G… account keys.";
+    return t ? t("invalidAddressError") : "Recipient addresses must be G… account keys.";
   }
   return null;
 }
@@ -52,6 +56,13 @@ export default function RecipientEditor({
 
   return (
     <>
+      <div className="field-help">
+        <span>Recipient shares</span>
+        <Tooltip label="basis points">
+          Shares are stored in basis points: 1 basis point is 0.01%, so 10,000
+          basis points equals 100%. Enter shares here as percentages.
+        </Tooltip>
+      </div>
       {rows.map((row, i) => (
         <div className="row" key={i}>
           <select
@@ -72,6 +83,7 @@ export default function RecipientEditor({
           <input
             className="pct"
             type="number"
+            aria-label={`Recipient ${i + 1} share percentage`}
             min="0"
             max="100"
             value={row.percent}

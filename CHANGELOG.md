@@ -8,6 +8,7 @@
 - Direct payments (`pay`) and escrow (`deposit`, `distribute`, `balance`)
 - `preview_payout` for exact per-recipient amounts before sending
 - Mutable splits with `update_split`, `transfer_control` and permanent locking
+- `update_split` refuses to run while the split holds an escrow balance, so a controller can't redirect a deposit after the fact
 - Creator index (`splits_of`), 32 recipient cap, storage TTL management
 
 ### App
