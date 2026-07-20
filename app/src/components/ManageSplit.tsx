@@ -256,6 +256,7 @@ export default function ManageSplit({
               {t("updateButton")}
             </button>
           </div>
+          <FeeHint assemble={transferFee} labelKey="estimatedTransferFee" />
           <div className="row">
             <input
               placeholder={t("placeholderController")}
@@ -278,6 +279,7 @@ export default function ManageSplit({
               {confirmLock ? t("confirmLockButton") : t("lockButton")}
             </button>
           </div>
+          <FeeHint assemble={lockFee} labelKey="estimatedLockFee" />
           {confirmLock && (
             <div className="lock-confirm" role="alertdialog" aria-live="assertive">
               <p>
