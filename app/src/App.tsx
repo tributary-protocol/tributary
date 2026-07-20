@@ -1,49 +1,15 @@
-import { useCallback, useState } from "react";
-import { Link, Route, Routes } from "react-router-dom";
-import { motion } from "motion/react";
-import {
-  CONTRACT_ID,
-  EXPLORER,
-  connectWallet,
-  shortAddress,
-} from "./lib/tributary";
-import { useTranslation } from "./lib/i18n";
-import DashboardPage from "./pages/DashboardPage";
-import SplitPage from "./pages/SplitPage";
-import LanguageSwitcher from "./components/LanguageSwitcher";
-
 export default function App() {
   const { t } = useTranslation();
   const [wallet, setWallet] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [backgroundError, setBackgroundError] = useState<string | null>(null);
+  const [splits, setSplits] = useState([]);
+  const [activity, setActivity] = useState([]);
+  const [mine, setMine] = useState(new Set<string>());
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    try {
-      const [nextSplits, nextActivity, nextMine] = await Promise.all([
-        fetchSplits(),
-        fetchActivity().catch(() => [] as ActivityItem[]),
-        wallet
-          ? fetchMineIds(wallet).catch(() => new Set<string>())
-          : Promise.resolve(new Set<string>()),
-      ]);
-      setSplits(nextSplits);
-      setActivity(nextActivity);
-      setMine(nextMine);
-      setError(null);
-      setBackgroundError(null);
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : String(e);
-      if (loading) {
-        // Initial load failure - show blocking error
-        setError(errorMsg);
-      } else {
-        // Background refresh failure - show non-blocking indicator
-        setBackgroundError(errorMsg);
-      }
-    } finally {
-      setLoading(false);
-    }
+    // ... existing refresh code ...
   }, [wallet, loading]);
 
   useEffect(() => {
@@ -61,7 +27,6 @@ export default function App() {
     };
   }, [refresh]);
 
-  async function onConnect() {
   const onConnect = useCallback(async () => {
     try {
       setWallet(await connectWallet());
@@ -114,10 +79,9 @@ export default function App() {
               </div>
             }
           />
-        </motion.div>
+        </Routes>
 
         <motion.div
-          {...rise}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.16 }}
         >
           <SplitList splits={splits} loading={loading} mine={mine} />
@@ -134,7 +98,6 @@ export default function App() {
         )}
 
         <Activity items={activity} />
-        </Routes>
       </main>
 
       <footer>
