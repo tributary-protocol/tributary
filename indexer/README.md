@@ -31,6 +31,7 @@ Environment variables, all optional:
 | `POLL_MS` | `10000` | poll interval |
 | `BACKOFF_INITIAL_MS` | `1000` | initial delay after an RPC rate-limit response |
 | `BACKOFF_MAX_MS` | `60000` | maximum exponential backoff delay |
+| `LOG_LEVEL` | `info` | log verbosity (`debug`, `info`, `warn`, `error`) |
 
 ## Docker
 
@@ -73,6 +74,7 @@ By default, the Docker image is configured to write to `/app/data/events.ndjson`
 | `POLL_MS` | `10000` | Polling interval in milliseconds |
 | `BACKOFF_INITIAL_MS` | `1000` | Initial rate-limit backoff delay in milliseconds |
 | `BACKOFF_MAX_MS` | `60000` | Maximum rate-limit backoff delay in milliseconds |
+| `LOG_LEVEL` | `info` | Log verbosity (`debug`, `info`, `warn`, `error`) |
 
 ## CSV export
 

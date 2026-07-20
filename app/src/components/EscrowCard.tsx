@@ -13,9 +13,11 @@ import TokenPicker from "./TokenPicker";
 export default function EscrowCard({
   wallet,
   splits,
+  selectedSplitId,
 }: {
   wallet: string | null;
   splits: SplitView[];
+  selectedSplitId?: string;
 }) {
   const { t } = useTranslation();
   const [splitId, setSplitId] = useState("");
@@ -24,6 +26,12 @@ export default function EscrowCard({
   const [pending, setPending] = useState<bigint | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedSplitId !== undefined) {
+      setSplitId(selectedSplitId);
+    }
+  }, [selectedSplitId]);
 
   async function loadPending(id: string) {
     if (id === "") {
@@ -143,6 +151,7 @@ export default function EscrowCard({
       </div>
       <div className="row">
         <button disabled={busy} onClick={deposit}>
+          {busy && <span className="btn-spinner" />}
           {busy ? t("working") : t("depositButton")}
         </button>
         <button
@@ -150,7 +159,8 @@ export default function EscrowCard({
           disabled={busy || !pending}
           onClick={distribute}
         >
-          {t("distributeButton")}
+          {busy && <span className="btn-spinner" />}
+          {busy ? t("working") : t("distributeButton")}
         </button>
       </div>
       {message && <p className="note">{message}</p>}

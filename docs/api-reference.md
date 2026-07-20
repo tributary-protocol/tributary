@@ -29,7 +29,7 @@ calls.
 | 9 | `TooManyRecipients` | more than 32 recipients |
 | 10 | `BadChildSplit` | child split is self-referential or does not exist |
 | 11 | `ArithmeticOverflow` | intermediate share math did not fit `i128` (guarded, effectively unreachable) |
-| 12 | `SplitHasBalance` | tried to close a split still holding funds |
+| 12 | `SplitHasBalance` | tried to close or update a split still holding funds |
 
 ## State-changing calls
 
@@ -57,8 +57,11 @@ pair up positionally; any failure reverts the whole call.
 
 ### `update_split(id, recipients, shares) -> Result<(), Error>`
 Replaces the recipients and shares of a mutable split. Controller only.
+Rejected while the split holds a balance in any token — a depositor's escrow
+cannot be redirected by a routing-table change made after the deposit lands.
+Call `distribute` for every token in `held_tokens` first.
 - **Auth:** the split's `controller`
-- **Errors:** `SplitNotFound`, `SplitImmutable`, `NoRecipients`, `TooManyRecipients`, `LengthMismatch`, `ZeroShare`, `BadShareTotal`, `BadChildSplit`
+- **Errors:** `SplitNotFound`, `SplitImmutable`, `SplitHasBalance`, `NoRecipients`, `TooManyRecipients`, `LengthMismatch`, `ZeroShare`, `BadShareTotal`, `BadChildSplit`
 - **Event:** `SplitUpdated { id }`
 
 ### `transfer_control(id, new_controller) -> Result<(), Error>`
@@ -79,6 +82,12 @@ split holds no balances.
 Moves funds into the contract and credits them to the split without paying anyone
 yet. Credits the amount the vault balance actually increased by (not the
 requested `amount`), so fee-on-transfer tokens cannot over-credit the split.
+
+The routing table this deposit will pay out against cannot be changed out from
+under it: `update_split` refuses to run while the split holds a balance in any
+token, so escrowed funds always pay out to the recipients that were in place
+when the deposit landed. This only applies to mutable splits — immutable
+splits (`controller: None`) have no routing table to change.
 - **Auth:** `from`
 - **Errors:** `InvalidAmount`, `SplitNotFound`
 - **Event:** `Deposited { id, token, amount }` (only when the received amount is positive)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { walletClient, readClient, SplitView, Recipient } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import RecipientEditor, {
@@ -19,10 +19,12 @@ function toRows(split: SplitView): Row[] {
 export default function ManageSplit({
   wallet,
   splits,
+  selectedSplitId,
   onChanged,
 }: {
   wallet: string | null;
   splits: SplitView[];
+  selectedSplitId?: string;
   onChanged: () => void;
 }) {
   const [splitId, setSplitId] = useState("");
@@ -34,8 +36,19 @@ export default function ManageSplit({
   const [message, setMessage] = useState<string | null>(null);
 
   const { t } = useTranslation();
-  const mine = splits.filter((s) => s.controller === wallet);
-  if (!wallet || mine.length === 0) return null;
+  const mine = useMemo(
+    () => splits.filter((s) => s.controller === wallet),
+    [splits, wallet],
+  );
+
+  useEffect(() => {
+    if (
+      selectedSplitId !== undefined &&
+      mine.some((s) => String(s.id) === selectedSplitId)
+    ) {
+      select(selectedSplitId);
+    }
+  }, [selectedSplitId, mine]);
 
   useEffect(() => {
     if (!splitId) {
@@ -51,6 +64,8 @@ export default function ManageSplit({
       .catch(() => {});
     return () => { active = false; };
   }, [splitId]);
+
+  if (!wallet || mine.length === 0) return null;
 
   function select(id: string) {
     setSplitId(id);
@@ -191,9 +206,11 @@ export default function ManageSplit({
                 {pendingAddr.slice(0, 4)}…{pendingAddr.slice(-4)} is proposed as controller.
               </span>
               <button disabled={busy} onClick={acceptTransfer}>
+                {busy && <span className="btn-spinner" />}
                 Accept control
               </button>
               <button className="ghost" disabled={busy} onClick={cancelTransfer}>
+                {busy && <span className="btn-spinner" />}
                 Decline
               </button>
             </div>
@@ -202,6 +219,7 @@ export default function ManageSplit({
           <RecipientEditor rows={rows} onChange={setRows} />
           <div className="row">
             <button disabled={busy} onClick={update}>
+              {busy && <span className="btn-spinner" />}
               {t("updateButton")}
             </button>
           </div>
@@ -213,14 +231,17 @@ export default function ManageSplit({
               disabled={confirmLock}
             />
             <button className="ghost" disabled={busy || isPendingTarget} onClick={proposeTransfer}>
+              {busy && <span className="btn-spinner" />}
               Propose transfer
             </button>
             {pendingAddr && (
               <button className="ghost" disabled={busy} onClick={cancelTransfer}>
+                {busy && <span className="btn-spinner" />}
                 Cancel transfer
               </button>
             )}
             <button className="ghost" disabled={busy} onClick={lock}>
+              {busy && <span className="btn-spinner" />}
               {confirmLock ? t("confirmLockButton") : t("lockButton")}
             </button>
           </div>

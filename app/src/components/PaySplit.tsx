@@ -10,14 +10,17 @@ import {
 } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import TokenPicker from "./TokenPicker";
+import Tooltip from "./Tooltip";
 
 export default function PaySplit({
   wallet,
   splits,
+  selectedSplitId,
   onPaid,
 }: {
   wallet: string | null;
   splits: SplitView[];
+  selectedSplitId?: string;
   onPaid: () => void;
 }) {
   const { t } = useTranslation();
@@ -30,6 +33,12 @@ export default function PaySplit({
   const [amountError, setAmountError] = useState<string | null>(null);
 
   const selected = splits.find((s) => String(s.id) === splitId);
+
+  useEffect(() => {
+    if (selectedSplitId !== undefined) {
+      setSplitId(selectedSplitId);
+    }
+  }, [selectedSplitId]);
 
   useEffect(() => {
     let active = true;
@@ -113,18 +122,29 @@ export default function PaySplit({
       </div>
       {amountError && <p className="note">{amountError}</p>}
       {selected && preview.length === selected.recipients.length && (
-        <ul className="preview">
-          {selected.recipients.map((r, i) => (
-            <li key={i}>
-              <span>{recipientLabel(r)}</span>
-              <span>
-                {fromStroops(preview[i])} {token.code}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="preview">
+          <div className="preview-heading">
+            <span>Payout preview</span>
+            <Tooltip label="dust">
+              Dust is the tiny remainder left when a payment cannot be divided
+              exactly. It goes to the last recipient so no funds are left
+              behind.
+            </Tooltip>
+          </div>
+          <ul>
+            {selected.recipients.map((r, i) => (
+              <li key={i}>
+                <span>{recipientLabel(r)}</span>
+                <span>
+                  {fromStroops(preview[i])} {token.code}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       <button disabled={busy || !!amountError} onClick={submit}>
+        {busy && <span className="btn-spinner" />}
         {busy ? t("waitingForSignature") : t("payButton")}
       </button>
       {message && <p className="note">{message}</p>}
