@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type Language = "en" | "vi" | "it";
+export type Language = "en" | "vi" | "it" | "id";
 
 export const LANGUAGE_STORAGE_KEY = "tributary-lang";
 
@@ -10,7 +10,7 @@ export function readSavedLanguage(): Language {
   }
 
   const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return saved === "vi" || saved === "it" || saved === "en" ? saved : "en";
+  return saved === "vi" || saved === "it" || saved === "id" || saved === "en" ? saved : "en";
 }
 
 export function persistLanguage(lang: Language) {
@@ -330,6 +330,109 @@ const translations = {
     activitySplitNum: "divisione #{id}",
     // Footer
     contractOnTestnet: "Contratto su testnet",
+  },
+  id: {
+    // Header & Navigation
+    connectWallet: "Hubungkan Freighter",
+    github: "GitHub",
+    testnet: "Testnet",
+    // Intro
+    introTitle: "Bagi pembayaran di Stellar",
+    introDesc: "Satu transaksi masuk, setiap penerima dibayar sesuai bagiannya. Berjalan di testnet.",
+    // ActionPanel tabs
+    tabCreate: "Buat",
+    tabPay: "Bayar",
+    tabEscrow: "Escrow",
+    tabManage: "Kelola",
+    // CreateSplit
+    createTitle: "Buat pembagian",
+    createEditableLabel: "Saya dapat mengedit pembagian ini nanti (hapus centang untuk menguncinya selamanya)",
+    createButton: "Buat pembagian",
+    waitingForSignature: "Menunggu tanda tangan…",
+    connectWalletFirst: "Hubungkan dompet Anda terlebih dahulu.",
+    splitCreated: "Pembagian #{id} dibuat.",
+    contractRejectedSplit: "Kontrak menolak pembagian.",
+    // RecipientEditor
+    sharesTotalError: "Total bagian harus berjumlah 100%.",
+    sharesGreaterZeroError: "Bagian harus lebih besar dari nol.",
+    recipientRequiredError: "Setiap penerima membutuhkan alamat atau id pembagian.",
+    recipientFormatError: "Alamat penerima harus berupa kunci akun G….",
+    kindAddress: "Alamat",
+    kindSplit: "Pembagian",
+    placeholderAddress: "Alamat penerima G…",
+    placeholderSplit: "Id pembagian",
+    addRecipient: "Tambah penerima",
+    pctOfTotal: "{pct}% dari 100%",
+    // PaySplit
+    payTitle: "Bayar melalui pembagian",
+    chooseSplit: "Pilih pembagian",
+    recipientsCount: "{count} penerima",
+    amount: "Jumlah",
+    paySuccess: "Berhasil membayar {amount} {token} melalui pembagian #{id}.",
+    payFailed: "Pembayaran gagal.",
+    payButton: "Bayar",
+    pickSplitAndAmount: "Pilih pembagian dan jumlah.",
+    trustlineWarningTitle: "Tidak dapat membayar dengan {token}",
+    trustlineWarningItem: "{address} tidak memiliki trustline {token}. Mereka harus menambahkannya sebelum pembagian ini dapat dibayar dengan {token}.",
+    trustlineWarningHint: "Pembayaran diblokir hingga semua penerima dapat menerima token ini.",
+    trustlineNoticeTitle: "Pemeriksaan trustline tidak dapat disimpulkan",
+    trustlineNoticeHint: "Tidak dapat memverifikasi trustline untuk beberapa penerima. Pembayaran mungkin gagal jika mereka tidak dapat menerima token ini.",
+    // EscrowCard
+    escrowTitle: "Escrow",
+    escrowDesc: "Simpan dana dalam pembagian sekarang, bayar semua orang nanti.",
+    pending: "Tertunda: {amount} {token}",
+    depositButton: "Setor",
+    distributeButton: "Distribusikan",
+    distributeSuccess: "Mendistribusikan {amount} {token} ke semua penerima.",
+    distributeFailed: "Tidak ada yang perlu didistribusikan.",
+    depositSuccess: "Berhasil menyetor {amount} {token}.",
+    depositFailed: "Setoran gagal.",
+    pickSplit: "Pilih pembagian.",
+    working: "Memproses…",
+    // ManageSplit
+    manageTitle: "Kelola pembagian Anda",
+    chooseSplitControl: "Pilih pembagian yang Anda kontrol",
+    updateButton: "Perbarui pembagian",
+    placeholderController: "G… pengontrol baru",
+    transferButton: "Transfer",
+    lockButton: "Kunci selamanya",
+    confirmLockButton: "Konfirmasi kunci",
+    updateSuccess: "Pembagian diperbarui.",
+    updateFailed: "Pembaruan ditolak.",
+    transferSuccess: "Kontrol ditransfer.",
+    transferFailed: "Transfer ditolak.",
+    lockConfirmPrompt: "Penguncian bersifat permanen. Tekan lagi untuk mengonfirmasi.",
+    lockSuccess: "Pembagian dikunci selamanya.",
+    lockFailed: "Penguncian ditolak.",
+    controllerFormatError: "Pengontrol harus berupa kunci akun G….",
+    // SplitList & Detail
+    loadingSplits: "Memuat pembagian…",
+    noSplitsOnContract: "Belum ada pembagian di kontrak ini.",
+    noSplitsPrompt: "Hubungkan Freighter di testnet, buka tab Buat dan daftar yang pertama. XLM Testnet gratis dari friendbot, jadi tidak ada biaya untuk mencoba.",
+    recentSplits: "Pembagian terbaru",
+    copy: "Salin",
+    yours: "milik Anda",
+    mutable: "dapat diubah",
+    locked: "terkunci",
+    nestedSplit: "pembagian #{id}",
+    detailEscrow: "escrow",
+    detailController: "pengontrol: {controller}",
+    detailHistoryTitle: "Riwayat Pembayaran & Distribusi",
+    detailHistoryEmpty: "Belum ada pembayaran atau distribusi.",
+    detailHistoryLoading: "Memuat riwayat…",
+    // Activity
+    recentActivity: "Aktivitas terbaru",
+    exportCsv: "Ekspor CSV",
+    activityCreated: "dibuat",
+    activityPaid: "dibayar",
+    activityUpdated: "diperbarui",
+    activityDeposit: "setoran",
+    activityDistributed: "didistribusikan",
+    activityControlMoved: "kontrol dipindahkan",
+    activityTx: "tx",
+    activitySplitNum: "pembagian #{id}",
+    // Footer
+    contractOnTestnet: "Kontrak di testnet",
   },
 };
 
