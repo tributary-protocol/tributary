@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { rpc, scValToNative } from "@stellar/stellar-sdk";
 import { withRateLimitBackoff } from "./rpc-backoff.mjs";
+import { isCaughtUp } from "./cursor.mjs";
 
 const DEFAULT_RPC_URL = "https://soroban-testnet.stellar.org";
 const DEFAULT_CONTRACT_ID =
@@ -228,7 +229,7 @@ async function poll() {
       cursor = res.cursor;
       saveCursor(cursor);
       if (shutdownRequested) break;
-      if (res.events.length < 100 && cursorLedger(cursor) >= res.latestLedger) {
+      if (isCaughtUp({ eventCount: res.events.length, pageLimit: 100, cursor, latestLedger: res.latestLedger })) {
         break;
       }
     }
