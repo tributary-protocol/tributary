@@ -20,7 +20,14 @@ The RPC cursor is persisted to `state.json`, so restarts continue where they lef
 
 ## Configuration
 
+Copy `.env.example` to `.env` and override any values you need:
+
+```bash
+cp .env.example .env
+```
+
 Environment variables, all optional:
+
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
