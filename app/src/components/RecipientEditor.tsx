@@ -16,7 +16,7 @@ export function rowsError(
   t?: (key: string, variables?: Record<string, string | number>) => string,
 ): string | null {
   if (Math.abs(rowsTotal(rows) - 100) > 0.001) {
-    return t ? t("shareTotalError") : "Shares must add up to 100%.";
+    return t ? t("sharesTotalError") : "Shares must add up to 100%.";
   }
   if (rows.some((r) => r.value.trim() === "")) {
     return t ? t("emptyRecipientError") : "Every recipient needs an address or split id.";
