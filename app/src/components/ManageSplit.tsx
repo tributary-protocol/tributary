@@ -162,6 +162,37 @@ export default function ManageSplit({
 
   const isPendingTarget = pendingAddr === wallet;
 
+  const updateFee = useMemo(() => {
+    if (rows.length === 0 || rowsError(rows, t)) {
+      return null;
+    }
+    return () =>
+      walletClient(wallet!).update_split({
+        id: BigInt(splitId),
+        recipients: rows.map(toRecipient),
+        shares: toShares(rows),
+      });
+  }, [rows, wallet, splitId, t]);
+  
+  const transferFee = useMemo(() => {
+    if (!transferTo.trim() || !/^G[A-Z2-7]{55}$/.test(transferTo.trim())) {
+      return null;
+    }
+    return () =>
+      walletClient(wallet!).transfer_control({
+        id: BigInt(splitId),
+        new_controller: transferTo.trim(),
+      });
+  }, [transferTo, wallet, splitId]);
+  
+  const lockFee = useMemo(() => {
+    return () =>
+      walletClient(wallet!).transfer_control({
+        id: BigInt(splitId),
+        new_controller: undefined,
+      });
+  }, [wallet, splitId]);
+
   return (
     <section className="card">
       <h2>{t("manageTitle")}</h2>
