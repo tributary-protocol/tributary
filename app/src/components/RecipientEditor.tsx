@@ -31,6 +31,19 @@ export function rowsError(
   return null;
 }
 
+export function duplicateValues(rows: Row[]): string[] {
+  const seen = new Map<string, number>();
+  for (const row of rows) {
+    const value = row.value.trim();
+    if (value === "") continue;
+    const key = `${row.kind}:${value}`;
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
+  return [...seen.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([key]) => key.slice(key.indexOf(":") + 1));
+}
+
 export function toRecipient(row: Row): Recipient {
   return row.kind === "address"
     ? { tag: "Account", values: [row.value.trim()] }
@@ -53,6 +66,7 @@ export default function RecipientEditor({
   }
 
   const total = rowsTotal(rows);
+  const duplicates = duplicateValues(rows);
 
   return (
     <>
@@ -101,6 +115,13 @@ export default function RecipientEditor({
           )}
         </div>
       ))}
+      {duplicates.length > 0 && (
+        <p className="note" role="alert">
+          Duplicate recipient{duplicates.length > 1 ? "s" : ""}:{" "}
+          {duplicates.join(", ")}. Each recipient is paid separately — combine
+          their shares into one row instead.
+        </p>
+      )}
       <div className="row actions">
         <button
           className="ghost"
