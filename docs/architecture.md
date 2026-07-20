@@ -55,6 +55,8 @@ Direct payment: `pay(from, id, token, amount)` transfers from the payer to every
 
 Escrow: `deposit(from, id, token, amount)` moves funds into the contract and credits `Balance(id, token)`. `distribute(id, token)` later pays the whole credited balance out following the split's shares. Distribution is permissionless because the routing table alone decides where funds go.
 
+Because distribution trusts whatever routing table is on the split at that moment, `update_split` refuses to run while `held_tokens(id)` is non-empty for a mutable split: a controller cannot accept a deposit under one set of recipients and pay it out under another. The controller must call `distribute` for every held token before changing recipients or shares. Immutable splits (`controller: None`) never had this exposure, since their routing table can't change at all.
+
 Both paths round each recipient's amount down and give the leftover to the last recipient, so the amount in always equals the amount out.
 
 ### Maximum safe payment amount
@@ -97,6 +99,7 @@ surfaces to callers as a numeric code. The full per-variant docs live in
 | 8 | `NothingToDistribute` | `distribute` called on a split/token with an empty escrow balance | `distribute` |
 | 9 | `TooManyRecipients` | more than `MAX_RECIPIENTS` (32) recipients supplied | `create_split`, `update_split` (via `validate`) |
 | 10 | `BadChildSplit` | a `Recipient::Split(child)` reference is unknown, or a split references itself | `create_split`, `update_split` (via `validate`) |
+| 12 | `SplitHasBalance` | the split still holds an escrow balance in some token | `close_split`, `update_split` |
 
 `validate` is the shared gate for `create_split` and `update_split`; it raises
 codes 1–4, 9, and 10. `load` is the shared gate for every call that

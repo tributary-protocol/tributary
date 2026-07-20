@@ -10,14 +10,17 @@ import {
 } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import TokenPicker from "./TokenPicker";
+import Tooltip from "./Tooltip";
 
 export default function PaySplit({
   wallet,
   splits,
+  selectedSplitId,
   onPaid,
 }: {
   wallet: string | null;
   splits: SplitView[];
+  selectedSplitId?: string;
   onPaid: () => void;
 }) {
   const { t } = useTranslation();
@@ -27,18 +30,34 @@ export default function PaySplit({
   const [preview, setPreview] = useState<bigint[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [amountError, setAmountError] = useState<string | null>(null);
 
   const selected = splits.find((s) => String(s.id) === splitId);
 
   useEffect(() => {
+    if (selectedSplitId !== undefined) {
+      setSplitId(selectedSplitId);
+    }
+  }, [selectedSplitId]);
+
+  useEffect(() => {
     let active = true;
+    setAmountError(null);
     if (splitId === "" || !amount || parseFloat(amount) <= 0) {
       setPreview([]);
       return;
     }
-    previewPayout(BigInt(splitId), toStroops(amount)).then((parts) => {
-      if (active) setPreview(parts);
-    });
+    try {
+      const stroops = toStroops(amount);
+      previewPayout(BigInt(splitId), stroops).then((parts) => {
+        if (active) setPreview(parts);
+      });
+    } catch (e) {
+      if (active) {
+        setPreview([]);
+        setAmountError(e instanceof Error ? e.message : String(e));
+      }
+    }
     return () => {
       active = false;
     };
@@ -101,19 +120,31 @@ export default function PaySplit({
         />
         <TokenPicker token={token} onChange={setToken} />
       </div>
+      {amountError && <p className="note">{amountError}</p>}
       {selected && preview.length === selected.recipients.length && (
-        <ul className="preview">
-          {selected.recipients.map((r, i) => (
-            <li key={i}>
-              <span>{recipientLabel(r)}</span>
-              <span>
-                {fromStroops(preview[i])} {token.code}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="preview">
+          <div className="preview-heading">
+            <span>Payout preview</span>
+            <Tooltip label="dust">
+              Dust is the tiny remainder left when a payment cannot be divided
+              exactly. It goes to the last recipient so no funds are left
+              behind.
+            </Tooltip>
+          </div>
+          <ul>
+            {selected.recipients.map((r, i) => (
+              <li key={i}>
+                <span>{recipientLabel(r)}</span>
+                <span>
+                  {fromStroops(preview[i])} {token.code}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
-      <button disabled={busy} onClick={submit}>
+      <button disabled={busy || !!amountError} onClick={submit}>
+        {busy && <span className="btn-spinner" />}
         {busy ? t("waitingForSignature") : t("payButton")}
       </button>
       {message && <p className="note">{message}</p>}

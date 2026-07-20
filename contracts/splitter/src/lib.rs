@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::missing_errors_doc, clippy::needless_pass_by_value)]
 //! Splits incoming payments between recipients by fixed basis-point shares.
 //!
 //! A split routes to accounts or to other splits. Payments either go straight
@@ -19,6 +20,8 @@ contractmeta!(
 
 pub const TOTAL_SHARES: u32 = 10_000;
 pub const MAX_RECIPIENTS: u32 = 32;
+pub const MAX_CASCADE_DEPTH: u32 = 5;
+pub const MAX_DISTRIBUTE_TOKENS: u32 = 10;
 
 const DAY_LEDGERS: u32 = 17_280;
 const TTL_THRESHOLD: u32 = 30 * DAY_LEDGERS;
@@ -39,7 +42,7 @@ pub enum Error {
     /// Code 3. A share value is `0`.
     /// Raised by `create_split` and `update_split` (via `validate`).
     ZeroShare = 3,
-    /// Code 4. Shares do not sum to `TOTAL_SHARES` (10_000), or the sum
+    /// Code 4. Shares do not sum to `TOTAL_SHARES` (`10_000`), or the sum
     /// overflows `u32`.
     /// Raised by `create_split` and `update_split` (via `validate`).
     BadShareTotal = 4,
@@ -65,10 +68,20 @@ pub enum Error {
     /// Raised by `create_split` and `update_split` (via `validate`).
     BadChildSplit = 10,
     /// An arithmetic path produced a value that does not fit the i128 the
-    /// contract stores. Can only happen if a share exceeds TOTAL_SHARES, which
+    /// contract stores. Can only happen if a share exceeds `TOTAL_SHARES`, which
     /// `validate` forbids, but we surface it as a typed error rather than panic.
     ArithmeticOverflow = 11,
+    /// Code 12. Raised by `close_split` when the split still holds a
+    /// balance, and by `update_split` when the split holds a balance in any
+    /// token — the routing table cannot be changed out from under money that
+    /// was deposited against it. Call `distribute` first.
     SplitHasBalance = 12,
+    /// Code 13. The cascade depth exceeds the maximum allowed limit.
+    MaxDepthExceeded = 13,
+    /// Code 14. The number of tokens to distribute exceeds the allowed limit.
+    TooManyTokens = 14,
+    /// Code 15. No pending control transfer exists for this split.
+    NoPendingTransfer = 15,
 }
 
 #[contracttype]
@@ -87,6 +100,13 @@ pub struct Split {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TokenDistribution {
+    pub token: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
 #[derive(Clone)]
 enum DataKey {
     Count,
@@ -94,6 +114,7 @@ enum DataKey {
     Balance(u64, Address),
     Created(Address),
     HeldTokens(u64),
+    PendingController(u64),
 }
 
 #[contractevent]
@@ -129,6 +150,14 @@ pub struct SplitClosed {
 
 #[contractevent]
 #[derive(Clone)]
+pub struct ControlTransferProposed {
+    #[topic]
+    pub id: u64,
+    pub new_controller: Address,
+}
+
+#[contractevent]
+#[derive(Clone)]
 pub struct ControlTransferred {
     #[topic]
     pub id: u64,
@@ -159,7 +188,7 @@ pub struct Splitter;
 #[contractimpl]
 impl Splitter {
     /// Registers a new split and returns its id. Shares are basis points
-    /// and must sum to exactly 10_000. Passing a controller makes the
+    /// and must sum to exactly `10_000`. Passing a controller makes the
     /// split mutable by that address; passing None locks it forever.
     pub fn create_split(
         env: Env,
@@ -190,6 +219,9 @@ impl Splitter {
             .unwrap_or_else(|| Vec::new(&env));
         created.push_back(id);
         env.storage().persistent().set(&index_key, &created);
+        env.storage()
+            .persistent()
+            .extend_ttl(&index_key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
         SplitCreated { id, creator }.publish(&env);
         Ok(id)
@@ -289,6 +321,12 @@ impl Splitter {
     }
 
     /// Replaces the recipients and shares of a mutable split.
+    ///
+    /// Rejected while the split holds a balance in any token: a depositor
+    /// sees the routing table at deposit time, and letting the controller
+    /// swap it out before `distribute` runs would let them redirect money
+    /// that already arrived. Call `distribute` for every token in
+    /// `held_tokens` first.
     pub fn update_split(
         env: Env,
         id: u64,
@@ -298,6 +336,9 @@ impl Splitter {
         let mut split = load(&env, id)?;
         let controller = split.controller.clone().ok_or(Error::SplitImmutable)?;
         controller.require_auth();
+        if !Self::held_tokens(env.clone(), id).is_empty() {
+            return Err(Error::SplitHasBalance);
+        }
         validate(&env, id, &recipients, &shares)?;
         split.recipients = recipients;
         split.shares = shares;
@@ -306,19 +347,90 @@ impl Splitter {
         Ok(())
     }
 
-    /// Hands control of a mutable split to another address, or locks it
-    /// forever when the new controller is None.
+    /// Proposes transferring control to a new address (two-step), or locks the
+    /// split forever when `new_controller` is `None`.
+    ///
+    /// When `Some(addr)`, a pending controller is recorded and `accept_control`
+    /// must be called by that address to finalise the handover. The current
+    /// controller can cancel the proposal with `cancel_transfer`.
+    ///
+    /// When `None`, control is renounced immediately and irreversibly.
     pub fn transfer_control(
         env: Env,
         id: u64,
         new_controller: Option<Address>,
     ) -> Result<(), Error> {
-        let mut split = load(&env, id)?;
+        let split = load(&env, id)?;
         let controller = split.controller.clone().ok_or(Error::SplitImmutable)?;
         controller.require_auth();
-        split.controller = new_controller.clone();
+
+        match new_controller {
+            None => {
+                // Renounce immediately — no recovery possible.
+                let mut split = split;
+                split.controller = None;
+                env.storage().persistent().set(&DataKey::Split(id), &split);
+                ControlTransferred {
+                    id,
+                    new_controller: None,
+                }
+                .publish(&env);
+            }
+            Some(addr) => {
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::PendingController(id), &addr);
+                env.storage().persistent().extend_ttl(
+                    &DataKey::PendingController(id),
+                    TTL_THRESHOLD,
+                    TTL_EXTEND_TO,
+                );
+                ControlTransferProposed {
+                    id,
+                    new_controller: addr,
+                }
+                .publish(&env);
+            }
+        }
+        Ok(())
+    }
+
+    /// Accepts a pending control transfer. Only the proposed controller may
+    /// call this, after which they become the split's controller.
+    pub fn accept_control(env: Env, id: u64) -> Result<(), Error> {
+        let pending = env
+            .storage()
+            .persistent()
+            .get::<_, Address>(&DataKey::PendingController(id))
+            .ok_or(Error::NoPendingTransfer)?;
+
+        pending.require_auth();
+
+        let mut split = load(&env, id)?;
+        split.controller = Some(pending.clone());
         env.storage().persistent().set(&DataKey::Split(id), &split);
-        ControlTransferred { id, new_controller }.publish(&env);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingController(id));
+
+        ControlTransferred {
+            id,
+            new_controller: Some(pending),
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Cancels a pending control transfer. Only the current controller may
+    /// call this. Does nothing if no transfer is pending.
+    pub fn cancel_transfer(env: Env, id: u64) -> Result<(), Error> {
+        let split = load(&env, id)?;
+        let controller = split.controller.clone().ok_or(Error::SplitImmutable)?;
+        controller.require_auth();
+
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingController(id));
         Ok(())
     }
 
@@ -335,6 +447,9 @@ impl Splitter {
         }
 
         env.storage().persistent().remove(&DataKey::Split(id));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingController(id));
         SplitClosed { id }.publish(&env);
         Ok(())
     }
@@ -346,6 +461,12 @@ impl Splitter {
     /// Credits the amount the vault's balance actually increased by rather
     /// than the requested `amount`, so fee-on-transfer tokens that deliver
     /// less than requested cannot over-credit the split.
+    ///
+    /// The routing table cannot be redirected out from under this deposit:
+    /// `update_split` refuses to run while the split holds a balance in any
+    /// token, so whoever controls the split must `distribute` first. This
+    /// only matters for mutable splits (`controller: Some(_)`) — immutable
+    /// splits have no routing table to change in the first place.
     pub fn deposit(
         env: Env,
         from: Address,
@@ -372,35 +493,7 @@ impl Splitter {
     /// Pays out everything credited to the split for the given token.
     /// Anyone can call this; the routing table decides where funds go.
     pub fn distribute(env: Env, id: u64, token: Address) -> Result<i128, Error> {
-        let split = load(&env, id)?;
-        let key = DataKey::Balance(id, token.clone());
-        let amount: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        if amount <= 0 {
-            return Err(Error::NothingToDistribute);
-        }
-        env.storage().persistent().remove(&key);
-
-        let tokens_key = DataKey::HeldTokens(id);
-        if let Some(mut tokens) = env
-            .storage()
-            .persistent()
-            .get::<_, Vec<Address>>(&tokens_key)
-        {
-            if let Some(idx) = tokens.first_index_of(&token) {
-                tokens.remove(idx);
-                if tokens.is_empty() {
-                    env.storage().persistent().remove(&tokens_key);
-                } else {
-                    env.storage().persistent().set(&tokens_key, &tokens);
-                    env.storage().persistent().extend_ttl(
-                        &tokens_key,
-                        TTL_THRESHOLD,
-                        TTL_EXTEND_TO,
-                    );
-                }
-            }
-        }
-
+        let (split, amount) = distribute_node(&env, id, &token)?;
         payout(
             &env,
             &split,
@@ -410,6 +503,67 @@ impl Splitter {
         );
         Distributed { id, token, amount }.publish(&env);
         Ok(amount)
+    }
+
+    /// Distributes a parent split and recursively distributes any freshly-credited
+    /// direct children (and their children, etc.) in one call, bounded by `max_depth`.
+    ///
+    /// Depth Bound & Gas:
+    /// - Each level of recursion increases the depth. A `max_depth` of 0 only distributes the parent.
+    /// - Each distribution load/writes to persistent storage and does token transfers.
+    /// - To prevent out-of-gas errors or stack overflow, `max_depth` must be limited to `MAX_CASCADE_DEPTH` (5).
+    pub fn distribute_cascade(
+        env: Env,
+        id: u64,
+        token: Address,
+        max_depth: u32,
+    ) -> Result<i128, Error> {
+        if max_depth > MAX_CASCADE_DEPTH {
+            return Err(Error::MaxDepthExceeded);
+        }
+        distribute_recursive(&env, id, &token, 0, max_depth)
+    }
+
+    /// Pays out all escrowed tokens for a split, up to `MAX_DISTRIBUTE_TOKENS` (10).
+    /// Returns the list of tokens and their distributed amounts.
+    /// If no tokens are specified, retrieves all tokens that currently have balances.
+    /// Zero-balance tokens are skipped and do not cause errors.
+    pub fn distribute_all_tokens(
+        env: Env,
+        id: u64,
+        tokens: Option<Vec<Address>>,
+    ) -> Result<Vec<TokenDistribution>, Error> {
+        let _split = load(&env, id)?;
+        let tokens_to_process = match tokens {
+            Some(t) => t,
+            None => Self::held_tokens(env.clone(), id),
+        };
+        if tokens_to_process.len() > MAX_DISTRIBUTE_TOKENS {
+            return Err(Error::TooManyTokens);
+        }
+        let mut distributions = Vec::new(&env);
+        for token in tokens_to_process.iter() {
+            let bal = Self::balance(env.clone(), id, token.clone());
+            if bal <= 0 {
+                continue;
+            }
+            let (node_split, amount) = distribute_node(&env, id, &token)?;
+            payout(
+                &env,
+                &node_split,
+                &env.current_contract_address(),
+                &token,
+                amount,
+            );
+            Distributed {
+                id,
+                token: token.clone(),
+                amount,
+            }
+            .publish(&env);
+            distributions.push_back(TokenDistribution { token, amount });
+        }
+        Ok(distributions)
     }
 
     /// Returns the exact per-recipient amounts a payment of `amount` would
@@ -422,6 +576,7 @@ impl Splitter {
         amounts(&env, &split, amount)
     }
 
+    #[must_use]
     pub fn balance(env: Env, id: u64, token: Address) -> i128 {
         env.storage()
             .persistent()
@@ -429,10 +584,15 @@ impl Splitter {
             .unwrap_or(0)
     }
 
+    pub fn has_split(env: Env, id: u64) -> bool {
+        env.storage().persistent().has(&DataKey::Split(id))
+    }
+
     pub fn get_split(env: Env, id: u64) -> Result<Split, Error> {
         load(&env, id)
     }
 
+    #[must_use]
     pub fn held_tokens(env: Env, id: u64) -> Vec<Address> {
         env.storage()
             .persistent()
@@ -440,19 +600,14 @@ impl Splitter {
             .unwrap_or_else(|| Vec::new(&env))
     }
 
+    #[must_use]
     pub fn splits_of(env: Env, creator: Address) -> Vec<u64> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Created(creator))
-            .unwrap_or_else(|| Vec::new(&env))
+        load_created(&env, &creator)
     }
 
+    #[must_use]
     pub fn splits_of_paged(env: Env, creator: Address, start: u32, limit: u32) -> Vec<u64> {
-        let all: Vec<u64> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Created(creator))
-            .unwrap_or_else(|| Vec::new(&env));
+        let all: Vec<u64> = load_created(&env, &creator);
         let len = all.len();
         if start >= len || limit == 0 {
             return Vec::new(&env);
@@ -468,17 +623,34 @@ impl Splitter {
         page
     }
 
+    #[must_use]
     pub fn splits_of_count(env: Env, creator: Address) -> u32 {
-        let all: Vec<u64> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Created(creator))
-            .unwrap_or_else(|| Vec::new(&env));
+        let all: Vec<u64> = load_created(&env, &creator);
         all.len()
     }
 
+    #[must_use]
     pub fn split_count(env: Env) -> u64 {
         env.storage().instance().get(&DataKey::Count).unwrap_or(0)
+    }
+
+    #[must_use]
+    pub fn pending_controller(env: Env, id: u64) -> Option<Address> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PendingController(id))
+    }
+}
+
+fn load_created(env: &Env, creator: &Address) -> Vec<u64> {
+    let key = DataKey::Created(creator.clone());
+    if let Some(created) = env.storage().persistent().get(&key) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        created
+    } else {
+        Vec::new(env)
     }
 }
 
@@ -522,7 +694,7 @@ fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
     let mut out = Vec::new(env);
     let last = split.recipients.len() - 1;
     let mut assigned: i128 = 0;
-    let total = I256::from_i128(env, TOTAL_SHARES as i128);
+    let total = I256::from_i128(env, i128::from(TOTAL_SHARES));
     for i in 0..split.recipients.len() {
         let part = if i == last {
             amount - assigned
@@ -531,8 +703,10 @@ fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
             // (custom high-supply tokens) before the division brings it back
             // into range. Compute the intermediate in 256-bit space so any
             // valid i128 amount stays panic- and wrap-free.
-            let product = I256::from_i128(env, amount)
-                .mul(&I256::from_i128(env, split.shares.get_unchecked(i) as i128));
+            let product = I256::from_i128(env, amount).mul(&I256::from_i128(
+                env,
+                i128::from(split.shares.get_unchecked(i)),
+            ));
             let part_i256 = product.div(&total);
             part_i256.to_i128().ok_or(Error::ArithmeticOverflow)?
         };
@@ -601,6 +775,78 @@ fn load(env: &Env, id: u64) -> Result<Split, Error> {
         .persistent()
         .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
     Ok(split)
+}
+
+fn distribute_node(env: &Env, id: u64, token: &Address) -> Result<(Split, i128), Error> {
+    let split = load(env, id)?;
+    let key = DataKey::Balance(id, token.clone());
+    let amount: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+    if amount <= 0 {
+        return Err(Error::NothingToDistribute);
+    }
+    env.storage().persistent().remove(&key);
+
+    let tokens_key = DataKey::HeldTokens(id);
+    if let Some(mut tokens) = env
+        .storage()
+        .persistent()
+        .get::<_, Vec<Address>>(&tokens_key)
+    {
+        if let Some(idx) = tokens.first_index_of(token) {
+            tokens.remove(idx);
+            if tokens.is_empty() {
+                env.storage().persistent().remove(&tokens_key);
+            } else {
+                env.storage().persistent().set(&tokens_key, &tokens);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&tokens_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+            }
+        }
+    }
+    Ok((split, amount))
+}
+
+fn distribute_recursive(
+    env: &Env,
+    id: u64,
+    token: &Address,
+    current_depth: u32,
+    max_depth: u32,
+) -> Result<i128, Error> {
+    let (split, amount) = match distribute_node(env, id, token) {
+        Ok(res) => res,
+        Err(Error::NothingToDistribute) => {
+            if current_depth == 0 {
+                return Err(Error::NothingToDistribute);
+            } else {
+                return Ok(0);
+            }
+        }
+        Err(e) => return Err(e),
+    };
+
+    payout(env, &split, &env.current_contract_address(), token, amount);
+    Distributed {
+        id,
+        token: token.clone(),
+        amount,
+    }
+    .publish(env);
+
+    if current_depth < max_depth {
+        let parts = amounts(env, &split, amount).unwrap_or_else(|_| Vec::new(env));
+        for i in 0..split.recipients.len() {
+            let part = parts.get_unchecked(i);
+            if part > 0 {
+                if let Recipient::Split(child_id) = split.recipients.get_unchecked(i) {
+                    distribute_recursive(env, child_id, token, current_depth + 1, max_depth)?;
+                }
+            }
+        }
+    }
+
+    Ok(amount)
 }
 
 #[cfg(test)]
