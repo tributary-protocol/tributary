@@ -97,6 +97,8 @@ app                  web dashboard (Vite + React, Freighter wallet)
 
 [docs/glossary.md](docs/glossary.md) defines core terms like split, share, controller, escrow and dust.
 
+[docs/freighter-setup.md](docs/freighter-setup.md) walks through installing the Freighter extension, switching to Testnet, and funding a testnet account so you can use the dashboard end-to-end.
+
 ## Contributing
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get set up and what a good change looks like.
