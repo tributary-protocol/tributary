@@ -34,11 +34,9 @@ pub enum Error {
     NoRecipients = 1,
     LengthMismatch = 2,
     ZeroShare = 3,
- feat/recipient-helpers
     /// Code 4. Shares do not sum to `TOTAL_SHARES` (`10_000`), or the sum
     /// overflows `u32`.
     /// Raised by `create_split` and `update_split` (via `validate`).
- main
     BadShareTotal = 4,
     SplitNotFound = 5,
     SplitImmutable = 6,
@@ -284,7 +282,6 @@ impl Splitter {
 
     /// Replaces the recipients and shares of a mutable split.
     ///
- feat/recipient-helpers
     /// # Errors
     ///
     /// * `SplitNotFound` - if `id` does not exist.
@@ -300,7 +297,6 @@ impl Splitter {
     /// swap it out before `distribute` runs would let them redirect money
     /// that already arrived. Call `distribute` for every token in
     /// `held_tokens` first.
- main
     pub fn update_split(
         env: &Env,
         id: u64,
@@ -321,7 +317,6 @@ impl Splitter {
         Ok(())
     }
 
- feat/recipient-helpers
     /// Hands control of a mutable split to another address, or locks it
     /// forever when the new controller is None.
     ///
@@ -337,7 +332,6 @@ impl Splitter {
     /// controller can cancel the proposal with `cancel_transfer`.
     ///
     /// When `None`, control is renounced immediately and irreversibly.
- main
     pub fn transfer_control(
         env: &Env,
         id: u64,
@@ -451,7 +445,6 @@ impl Splitter {
     /// than the requested `amount`, so fee-on-transfer tokens that deliver
     /// less than requested cannot over-credit the split.
     ///
- feat/recipient-helpers
     /// # Errors
     ///
     /// * `InvalidAmount` - if `amount` is not positive.
@@ -461,7 +454,6 @@ impl Splitter {
     /// token, so whoever controls the split must `distribute` first. This
     /// only matters for mutable splits (`controller: Some(_)`) — immutable
     /// splits have no routing table to change in the first place.
- main
     pub fn deposit(
         env: &Env,
         from: Address,
@@ -487,45 +479,13 @@ impl Splitter {
 
     /// Pays out everything credited to the split for the given token.
     /// Anyone can call this; the routing table decides where funds go.
- feat/recipient-helpers
     ///
     /// # Errors
     ///
     /// * `SplitNotFound` - if `id` does not exist.
     /// * `NothingToDistribute` - if the split holds no balance for `token`.
-    pub fn distribute(env: &Env, id: u64, token: Address) -> Result<i128, Error> {
-        let split = load(&env, id)?;
-        let key = DataKey::Balance(id, token.clone());
-        let amount: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        if amount <= 0 {
-            return Err(Error::NothingToDistribute);
-        }
-        env.storage().persistent().remove(&key);
-
-        let tokens_key = DataKey::HeldTokens(id);
-        if let Some(mut tokens) = env
-            .storage()
-            .persistent()
-            .get::<_, Vec<Address>>(&tokens_key)
-        {
-            if let Some(idx) = tokens.first_index_of(&token) {
-                tokens.remove(idx);
-                if tokens.is_empty() {
-                    env.storage().persistent().remove(&tokens_key);
-                } else {
-                    env.storage().persistent().set(&tokens_key, &tokens);
-                    env.storage().persistent().extend_ttl(
-                        &tokens_key,
-                        TTL_THRESHOLD,
-                        TTL_EXTEND_TO,
-                    );
-                }
-            }
-        }
-
     pub fn distribute(env: Env, id: u64, token: Address) -> Result<i128, Error> {
         let (split, amount) = distribute_node(&env, id, &token)?;
- main
         payout(
             &env,
             &split,
@@ -614,37 +574,29 @@ impl Splitter {
     }
 
     #[must_use]
- feat/recipient-helpers
-    pub fn balance(env: &Env, id: u64, token: Address) -> i128 {
     pub fn balance(env: Env, id: u64, token: Address) -> i128 {
- main
         env.storage()
             .persistent()
             .get(&DataKey::Balance(id, token))
             .unwrap_or(0)
     }
 
- feat/recipient-helpers
+    #[must_use]
+    pub fn has_split(env: Env, id: u64) -> bool {
+        env.storage().persistent().has(&DataKey::Split(id))
+    }
+
     /// Returns the split configuration for `id`.
     ///
     /// # Errors
     ///
     /// * `SplitNotFound` - if `id` does not exist.
-    pub fn get_split(env: &Env, id: u64) -> Result<Split, Error> {
-    pub fn has_split(env: Env, id: u64) -> bool {
-        env.storage().persistent().has(&DataKey::Split(id))
-    }
-
     pub fn get_split(env: Env, id: u64) -> Result<Split, Error> {
- main
         load(&env, id)
     }
 
     #[must_use]
- feat/recipient-helpers
-    pub fn held_tokens(env: &Env, id: u64) -> Vec<Address> {
     pub fn held_tokens(env: Env, id: u64) -> Vec<Address> {
- main
         env.storage()
             .persistent()
             .get(&DataKey::HeldTokens(id))
@@ -652,22 +604,11 @@ impl Splitter {
     }
 
     #[must_use]
- feat/recipient-helpers
-    pub fn splits_of(env: &Env, creator: Address) -> Vec<u64> {
     pub fn splits_of(env: Env, creator: Address) -> Vec<u64> {
- feat/recipient-helpers
- main
-        env.storage()
-            .persistent()
-            .get(&DataKey::Created(creator))
-            .unwrap_or_else(|| Vec::new(&env))
         load_created(&env, &creator)
- main
     }
 
     #[must_use]
- feat/recipient-helpers
-    pub fn split_count(env: &Env) -> u64 {
     pub fn splits_of_paged(env: Env, creator: Address, start: u32, limit: u32) -> Vec<u64> {
         let all: Vec<u64> = load_created(&env, &creator);
         let len = all.len();
@@ -693,7 +634,6 @@ impl Splitter {
 
     #[must_use]
     pub fn split_count(env: Env) -> u64 {
- main
         env.storage().instance().get(&DataKey::Count).unwrap_or(0)
     }
 

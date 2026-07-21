@@ -742,9 +742,7 @@ fn accept_control_by_wrong_address_fails() {
     );
 
     s.client.transfer_control(&id, &Some(next.clone()));
- feat/recipient-helpers
     assert_eq!(s.client.get_split(&id).controller, Some(next));
-
 
     // Intruder tries to accept — auth fails because mock_all_auths won't be set
     s.env.set_auths(&[]);
@@ -845,7 +843,6 @@ fn renounce_control_still_works_in_one_step() {
     );
 
     // Renounce — immediate and irreversible
- main
     s.client.transfer_control(&id, &None);
     assert_eq!(s.client.get_split(&id).controller, None);
 
@@ -910,7 +907,6 @@ fn controller_can_update_mutable_split() {
 
 #[test]
 fn immutable_split_cannot_be_updated() {
- feat/recipient-helpers
     let s = setup();
     let creator = Address::generate(&s.env);
     let a = Address::generate(&s.env);
@@ -973,13 +969,13 @@ fn update_split_rejects_while_balance_outstanding() {
 
 #[test]
 fn every_error_code_maps_to_its_triggering_call() {
- main
     let s = setup();
     let creator = Address::generate(&s.env);
     let a = Address::generate(&s.env);
     let b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, _) = fund_token(&s.env, &payer, 1_000);
 
- feat/recipient-helpers
     assert_eq!(
         s.client
             .try_create_split(&creator, &vec![&s.env], &vec![&s.env], &None),
@@ -1000,7 +996,11 @@ fn every_error_code_maps_to_its_triggering_call() {
         ),
         Err(Ok(Error::LengthMismatch))
     );
- main
+    assert_eq!(
+        s.client.try_pay(&payer, &99, &token_id, &100),
+        Err(Ok(Error::SplitNotFound))
+    );
+
     let id = s.client.create_split(
         &creator,
         &vec![&s.env, acct(&a)],
@@ -1008,11 +1008,65 @@ fn every_error_code_maps_to_its_triggering_call() {
         &None,
     );
 
- feat/recipient-helpers
-    let result = s
-        .client
-        .try_update_split(&id, &vec![&s.env, acct(&b)], &vec![&s.env, 10_000]);
-    assert_eq!(result, Err(Ok(Error::SplitImmutable)));
+    assert_eq!(
+        s.client.try_create_split(
+            &creator,
+            &vec![&s.env, acct(&a), acct(&b)],
+            &vec![&s.env, 10_000, 0],
+            &None,
+        ),
+        Err(Ok(Error::ZeroShare))
+    );
+
+    assert_eq!(
+        s.client.try_create_split(
+            &creator,
+            &vec![&s.env, acct(&a), acct(&b)],
+            &vec![&s.env, 5_000, 4_000],
+            &None,
+        ),
+        Err(Ok(Error::BadShareTotal))
+    );
+
+    assert_eq!(
+        s.client.try_pay(&payer, &id, &token_id, &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+    assert_eq!(
+        s.client.try_deposit(&payer, &id, &token_id, &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+    assert_eq!(
+        s.client.try_preview_payout(&id, &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+
+    let locked = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    assert_eq!(
+        s.client
+            .try_update_split(&locked, &vec![&s.env, acct(&a)], &vec![&s.env, 10_000]),
+        Err(Ok(Error::SplitImmutable))
+    );
+    assert_eq!(
+        s.client
+            .try_transfer_control(&locked, &Some(controller.clone())),
+        Err(Ok(Error::SplitImmutable))
+    );
+
+    assert_eq!(
+        s.client.try_distribute(&locked, &token_id),
+        Err(Ok(Error::NothingToDistribute))
+    );
+    assert_eq!(
+        s.client.try_close_split(&locked),
+        Err(Ok(Error::SplitImmutable))
+    );
+    assert_eq!(s.client.held_tokens(&id), vec![&s.env]);
 }
 
 // Turns arbitrary positive weights into basis-point shares that sum to
@@ -1123,12 +1177,20 @@ fn held_tokens_tracking() {
     let s = setup();
     let creator = Address::generate(&s.env);
     let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
     let payer = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
 
     let (token_x, _) = fund_token(&s.env, &payer, 1_000);
     let (token_y, _) = fund_token(&s.env, &payer, 1_000);
 
     let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
     assert_eq!(
         s.client.try_create_split(
             &creator,
@@ -1155,35 +1217,19 @@ fn held_tokens_tracking() {
     );
 
     let locked = s.client.create_split(
- main
         &creator,
         &vec![&s.env, acct(&a)],
         &vec![&s.env, 10_000],
         &None,
     );
- feat/recipient-helpers
 
-    // Initial state: no held tokens
-    assert_eq!(s.client.held_tokens(&id), vec![&s.env]);
-
-    // 1. Credit adds a token once
-    s.client.deposit(&payer, &id, &token_x, &100);
-    assert_eq!(s.client.held_tokens(&id), vec![&s.env, token_x.clone()]);
-
-    // 2. A repeat credit does not duplicate it
-    s.client.deposit(&payer, &id, &token_x, &100);
-    assert_eq!(s.client.held_tokens(&id), vec![&s.env, token_x.clone()]);
-
-    // Add another token
-    s.client.deposit(&payer, &id, &token_y, &200);
     assert_eq!(
         s.client
             .try_update_split(&locked, &vec![&s.env, acct(&a)], &vec![&s.env, 10_000]),
         Err(Ok(Error::SplitImmutable))
     );
     assert_eq!(
-        s.client
-            .try_transfer_control(&locked, &Some(controller.clone())),
+        s.client.try_transfer_control(&locked, &Some(controller)),
         Err(Ok(Error::SplitImmutable))
     );
 
@@ -1200,238 +1246,6 @@ fn held_tokens_tracking() {
         Err(Ok(Error::InvalidAmount))
     );
 
- main
-    assert_eq!(
-        s.client.held_tokens(&id),
-        vec![&s.env, token_x.clone(), token_y.clone()]
-    );
- feat/recipient-helpers
-    // 3. Distribute removes the token
-    s.client.distribute(&id, &token_x);
-    assert_eq!(s.client.held_tokens(&id), vec![&s.env, token_y.clone()]);
-
-    s.client.distribute(&id, &token_y);
-    assert_eq!(s.client.held_tokens(&id), vec![&s.env]);
-}
-
-#[test]
-fn close_split_reclaims_storage() {
-    let s = setup();
-    let creator = Address::generate(&s.env);
-    let controller = Address::generate(&s.env);
-    let a = Address::generate(&s.env);
-
-    let id = s.client.create_split(
-        &creator,
-        &vec![&s.env, acct(&a)],
-        &vec![&s.env, 10_000],
-        &Some(controller.clone()),
-    );
-
-    s.client.close_split(&id);
-    assert_eq!(s.client.try_get_split(&id), Err(Ok(Error::SplitNotFound)));
-}
-
-#[test]
-fn close_split_rejects_if_balance_remains() {
-    let s = setup();
-    let creator = Address::generate(&s.env);
-    let controller = Address::generate(&s.env);
-    let a = Address::generate(&s.env);
-    let payer = Address::generate(&s.env);
-    let (token_id, _) = fund_token(&s.env, &payer, 1_000);
-
-    let id = s.client.create_split(
-        &creator,
-        &vec![&s.env, acct(&a)],
-        &vec![&s.env, 10_000],
-        &Some(controller.clone()),
-    );
-
-    s.client.deposit(&payer, &id, &token_id, &100);
-
-    let result = s.client.try_close_split(&id);
-    assert_eq!(result, Err(Ok(Error::SplitHasBalance)));
-
-    // After distribute, it can be closed
-    s.client.distribute(&id, &token_id);
-    s.client.close_split(&id);
-    assert_eq!(s.client.try_get_split(&id), Err(Ok(Error::SplitNotFound)));
-}
-
-#[test]
-fn close_split_requires_auth() {
-    let s = setup();
-    let creator = Address::generate(&s.env);
-    let controller = Address::generate(&s.env);
-    let a = Address::generate(&s.env);
-
-    let id = s.client.create_split(
-
-    let mut recipients = vec![&s.env, acct(&a)];
-    let mut shares = vec![&s.env, 300u32];
-    for _ in 0..32 {
-        recipients.push_back(acct(&Address::generate(&s.env)));
-        shares.push_back(300u32);
-    }
-    assert_eq!(
-        s.client
-            .try_create_split(&creator, &recipients, &shares, &None),
-        Err(Ok(Error::TooManyRecipients))
-    );
-
-    assert_eq!(
-        s.client.try_create_split(
-            &creator,
-            &vec![&s.env, acct(&a), Recipient::Split(7)],
-            &vec![&s.env, 5_000, 5_000],
-            &None,
-        ),
-        Err(Ok(Error::BadChildSplit))
-    );
-    let mutable = s.client.create_split(
- main
-        &creator,
-        &vec![&s.env, acct(&a)],
-        &vec![&s.env, 10_000],
-        &Some(controller.clone()),
-    );
-
-    s.env.set_auths(&[]);
-    let result = s.env.try_invoke_contract::<(), Error>(
-        &s.client.address,
-        &soroban_sdk::Symbol::new(&s.env, "close_split"),
-        (&id,).into_val(&s.env),
-    );
-    assert!(result.is_err());
-}
-
-// Turns arbitrary positive weights into basis-point shares that sum to
-// exactly TOTAL_SHARES, using the same floor-with-remainder-to-last approach
-// as `amounts` in lib.rs, so `create_split`'s share-total check accepts them.
-fn weights_to_shares(env: &Env, weights: &[u32]) -> Vec<u32> {
-    let total: u64 = weights.iter().map(|&w| w as u64).sum();
-    let last = weights.len() - 1;
-    let mut shares = soroban_sdk::vec![env];
-    let mut assigned: u64 = 0;
-    for (i, &w) in weights.iter().enumerate() {
-        let share = if i == last {
-            TOTAL_SHARES as u64 - assigned
-        } else {
-            (w as u64 * TOTAL_SHARES as u64) / total
-        };
-        shares.push_back(share as u32);
-        assigned += share;
-    }
-    shares
-}
-
-proptest::proptest! {
-    #[test]
-    fn property_conservation_random_shares(
-        weights in proptest::collection::vec(1u32..=1_000u32, 2..10usize),
-        amount in 1i128..1_000_000i128,
-    ) {
-        let env = soroban_sdk::Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register(Splitter, ());
-        let client = SplitterClient::new(&env, &contract_id);
-        let creator = soroban_sdk::Address::generate(&env);
-
-        let shares = weights_to_shares(&env, &weights);
-        let mut recipients = soroban_sdk::vec![&env];
-        let mut addrs: Vec<Address> = soroban_sdk::vec![&env];
-        for _ in shares.iter() {
-            let addr = soroban_sdk::Address::generate(&env);
-            recipients.push_back(acct(&addr));
-            addrs.push_back(addr);
-        }
-
-        let id = client.create_split(&creator, &recipients, &shares, &None);
-        let payer = soroban_sdk::Address::generate(&env);
-        let (token_id, token_client) = fund_token(&env, &payer, amount);
-        client.pay(&payer, &id, &token_id, &amount);
-
-        let mut received: i128 = 0;
-        for addr in addrs.iter() {
-            received += token_client.balance(&addr);
-        }
-        proptest::prop_assert_eq!(received, amount);
-    }
-}
-
-// Regression for #42: a high-supply token can be paid an amount large enough
-// that `amount * share` overflows i128 in the old share math. The intermediate
-// must be computed in 256-bit space so the split stays panic- and wrap-free and
-// amount-in always equals amount-out.
-#[test]
- feat/recipient-helpers
-fn close_split_rejects_immutable_split() {
-    let s = setup();
-    let creator = Address::generate(&s.env);
-    let a = Address::generate(&s.env);
-fn large_payment_does_not_overflow_share_math() {
-    let s = setup();
-    let creator = Address::generate(&s.env);
-    let a = Address::generate(&s.env);
-    let b = Address::generate(&s.env);
-    let c = Address::generate(&s.env);
-
-    // Large enough that `amount * share` would overflow i128 for any share > 100,
-    // but each recipient's final slice still fits comfortably in i128.
-    let amount: i128 = i128::MAX / 100;
-    let payer = Address::generate(&s.env);
-    let (token_id, token_client) = fund_token(&s.env, &payer, amount);
-
-    let id = s.client.create_split(
-        &creator,
-        &vec![&s.env, acct(&a), acct(&b), acct(&c)],
-        &vec![&s.env, 5_000, 3_000, 2_000],
-        &None,
-    );
-
-    // Must not panic or wrap; the call returning is the first assertion.
-    s.client.pay(&payer, &id, &token_id, &amount);
-
-    // Each non-last recipient gets `amount * share / 10000` truncated; the last
-    // recipient absorbs the rounding dust.
-    let expected = |share: i128| -> i128 {
-        soroban_sdk::I256::from_i128(&s.env, amount)
-            .mul(&soroban_sdk::I256::from_i128(&s.env, share))
-            .div(&soroban_sdk::I256::from_i128(&s.env, 10_000))
-            .to_i128()
-            .unwrap()
-    };
-
-    let a_bal = token_client.balance(&a);
-    let b_bal = token_client.balance(&b);
-    let c_bal = token_client.balance(&c);
-
-    assert_eq!(a_bal, expected(5_000));
-    assert_eq!(b_bal, expected(3_000));
-    assert_eq!(c_bal, amount - a_bal - b_bal);
-    assert_eq!(a_bal + b_bal + c_bal, amount);
-    assert_eq!(token_client.balance(&payer), 0);
-}
-#[test]
-fn held_tokens_tracking() {
-    let s = setup();
-    let creator = Address::generate(&s.env);
-    let a = Address::generate(&s.env);
-    let payer = Address::generate(&s.env);
-
-    let (token_x, _) = fund_token(&s.env, &payer, 1_000);
-    let (token_y, _) = fund_token(&s.env, &payer, 1_000);
- main
-
-    let id = s.client.create_split(
-        &creator,
-        &vec![&s.env, acct(&a)],
-        &vec![&s.env, 10_000],
-        &None,
-    );
-
- feat/recipient-helpers
     // Initial state: no held tokens
     assert_eq!(s.client.held_tokens(&id), vec![&s.env]);
 
@@ -1539,7 +1353,6 @@ fn close_split_rejects_immutable_split() {
         &None,
     );
 
- main
     let result = s.client.try_close_split(&id);
     assert_eq!(result, Err(Ok(Error::SplitImmutable)));
 }
@@ -1970,7 +1783,6 @@ fn distribute_pays_out_the_fee_adjusted_balance() {
     assert_eq!(distributed, 450);
     assert_eq!(token_client.balance(&s.client.address), 0);
 }
- feat/recipient-helpers
 
 // #109: randomized conservation fuzz test using the in-harness test PRNG.
 // Generates many random (shares, amount) combinations and asserts that the
@@ -2057,8 +1869,6 @@ fn conservation_holds_across_random_splits() {
         assert_eq!(received, amount, "conservation broken for random split");
     }
 }
- feat/recipient-helpers
- main
 
 #[test]
 fn single_recipient_gets_full_amount() {
@@ -2081,4 +1891,3 @@ fn single_recipient_gets_full_amount() {
     assert_eq!(token_client.balance(&a), amount);
     assert_eq!(token_client.balance(&payer), 0);
 }
- main
