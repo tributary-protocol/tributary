@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { initialScanPosition, parseArgs } from './cli.mjs';
 import {
   validateConfig,
   shouldLog,
@@ -121,4 +122,32 @@ test('createMetricsTracker updates and retrieves metrics state', () => {
 
   tracker.recordError();
   assert.equal(tracker.getMetrics().errorsTotal, 1);
+});
+
+test('parseArgs reads a starting ledger', () => {
+  assert.deepEqual(parseArgs(['--from-ledger', '12345']), {
+    ok: true,
+    value: { fromLedger: 12345 },
+  });
+  assert.deepEqual(parseArgs(['--from-ledger=67890']), {
+    ok: true,
+    value: { fromLedger: 67890 },
+  });
+});
+
+test('parseArgs rejects invalid starting ledgers', () => {
+  for (const value of ['0', '-1', '1.5', 'ledger']) {
+    const result = parseArgs(['--from-ledger', value]);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /positive integer/);
+  }
+});
+
+test('from-ledger overrides a saved cursor for the initial scan', () => {
+  assert.deepEqual(initialScanPosition(12345, '999-1'), {
+    startLedger: 12345,
+  });
+  assert.deepEqual(initialScanPosition(undefined, '999-1'), {
+    cursor: '999-1',
+  });
 });

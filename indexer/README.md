@@ -10,6 +10,14 @@ npm install
 npm start
 ```
 
+To re-scan from a specific ledger without editing `state.json`, pass
+`--from-ledger`. It overrides the saved cursor for the initial scan, then normal
+cursor persistence resumes:
+
+```bash
+npm start -- --from-ledger 581235
+```
+
 Each event becomes one line in `events.ndjson`:
 
 ```json
