@@ -592,6 +592,10 @@ impl Splitter {
         load(&env, id)
     }
 
+    pub fn get_shares(env: Env, id: u64) -> Result<Vec<u32>, Error> {
+        Ok(load(&env, id)?.shares)
+    }
+
     #[must_use]
     pub fn held_tokens(env: Env, id: u64) -> Vec<Address> {
         env.storage()
