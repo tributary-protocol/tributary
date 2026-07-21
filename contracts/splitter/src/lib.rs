@@ -185,7 +185,7 @@ impl Splitter {
     ) -> Result<u64, Error> {
         creator.require_auth();
         let id: u64 = env.storage().instance().get(&DataKey::Count).unwrap_or(0);
-        validate(&env, id, &recipients, &shares)?;
+        validate(env, id, &recipients, &shares)?;
         let split = Split {
             recipients,
             shares,
@@ -202,14 +202,14 @@ impl Splitter {
             .storage()
             .persistent()
             .get(&index_key)
-            .unwrap_or_else(|| Vec::new(&env));
+            .unwrap_or_else(|| Vec::new(env));
         created.push_back(id);
         env.storage().persistent().set(&index_key, &created);
         env.storage()
             .persistent()
             .extend_ttl(&index_key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
-        SplitCreated { id, creator }.publish(&env);
+        SplitCreated { id, creator }.publish(env);
         Ok(id)
     }
 
@@ -231,9 +231,9 @@ impl Splitter {
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
-        let split = load(&env, id)?;
-        payout(&env, &split, &from, &token, amount);
-        SplitPaid { id, token, amount }.publish(&env);
+        let split = load(env, id)?;
+        payout(env, &split, &from, &token, amount);
+        SplitPaid { id, token, amount }.publish(env);
         Ok(())
     }
 
@@ -268,14 +268,14 @@ impl Splitter {
         for i in 0..ids.len() {
             let id = ids.get_unchecked(i);
             let amount = amounts.get_unchecked(i);
-            let split = load(&env, id)?;
-            payout(&env, &split, &from, &token, amount);
+            let split = load(env, id)?;
+            payout(env, &split, &from, &token, amount);
             SplitPaid {
                 id,
                 token: token.clone(),
                 amount,
             }
-            .publish(&env);
+            .publish(env);
         }
         Ok(())
     }
@@ -303,17 +303,17 @@ impl Splitter {
         recipients: Vec<Recipient>,
         shares: Vec<u32>,
     ) -> Result<(), Error> {
-        let mut split = load(&env, id)?;
+        let mut split = load(env, id)?;
         let controller = split.controller.clone().ok_or(Error::SplitImmutable)?;
         controller.require_auth();
         if !Self::held_tokens(env.clone(), id).is_empty() {
             return Err(Error::SplitHasBalance);
         }
-        validate(&env, id, &recipients, &shares)?;
+        validate(env, id, &recipients, &shares)?;
         split.recipients = recipients;
         split.shares = shares;
         env.storage().persistent().set(&DataKey::Split(id), &split);
-        SplitUpdated { id }.publish(&env);
+        SplitUpdated { id }.publish(env);
         Ok(())
     }
 
