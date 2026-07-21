@@ -35,7 +35,7 @@ Per-recipient amounts are rounded down and the leftover dust goes to the last re
 
 ## Contract API
 
-The table below summarises each call; see [docs/api-reference.md](docs/api-reference.md) for the full per-function reference with parameters, return types, errors, events and auth.
+The table below summarizes each call; see [docs/api-reference.md](docs/api-reference.md) for the full per-function reference with parameters, return types, errors, events and auth.
 
 | Function | Description |
 | --- | --- |
@@ -79,12 +79,18 @@ cargo test
 cargo build --release --target wasm32v1-none -p tributary-splitter
 ```
 
+To see the create-then-pay flow end to end without a browser wallet, run the
+standalone Node example at
+[examples/node-create-and-pay](examples/node-create-and-pay), which creates a
+split and pays through it on testnet using `tributary-sdk` directly. `scripts/demo.sh` does the same walkthrough with the Stellar CLI instead.
+
 ## Layout
 
 ```
-contracts/splitter   core splitting contract
-sdk                  TypeScript client generated from the contract spec
-app                  web dashboard (Vite + React, Freighter wallet)
+contracts/splitter          core splitting contract
+sdk                          TypeScript client generated from the contract spec
+app                          web dashboard (Vite + React, Freighter wallet)
+examples/node-create-and-pay Node script for the create-then-pay flow (no wallet needed)
 ```
 
 ## Roadmap
@@ -101,6 +107,8 @@ app                  web dashboard (Vite + React, Freighter wallet)
 [docs/glossary.md](docs/glossary.md) defines core terms like split, share, controller, escrow and dust.
 
 [docs/preview-payout.md](docs/preview-payout.md) shows how to preview a payout with `preview_payout` before paying.
+
+[docs/integrations.md](docs/integrations.md#distributing-a-two-level-tree) includes an end-to-end nested split example and shows the multi-call distribution order.
 
 ## Contributing
 
