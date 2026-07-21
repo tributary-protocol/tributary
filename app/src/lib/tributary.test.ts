@@ -126,6 +126,19 @@ describe("fromStroops", () => {
       expect(fromStroops(toStroops(input))).toBe(expected);
     }
   });
+
+  it("converts 6-decimal token correctly", () => {
+    expect(fromStroops(1_000_000n, 6)).toBe("1");
+    expect(fromStroops(500_000n, 6)).toBe("0.5");
+    expect(fromStroops(1_234_567n, 6)).toBe("1.234567");
+    expect(fromStroops(1n, 6)).toBe("0.000001");
+  });
+
+  it("converts 18-decimal token correctly", () => {
+    expect(fromStroops(1_000_000_000_000_000_000n, 18)).toBe("1");
+    expect(fromStroops(500_000_000_000_000_000n, 18)).toBe("0.5");
+    expect(fromStroops(1n, 18)).toBe("0.000000000000000001");
+  });
 });
 
 describe("Token conversion functions", () => {

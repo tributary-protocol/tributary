@@ -7,6 +7,15 @@ import {
 } from "@stellar/freighter-api";
 
 export type { Recipient };
+export {
+  checkTrustlines,
+  clearTrustlineCache,
+} from "./trustlines";
+export type {
+  TrustlineStatus,
+  RecipientTrustline,
+  TrustlineCheckResult,
+} from "./trustlines";
 
 export const RPC_URL = "https://soroban-testnet.stellar.org";
 export const EXPLORER = "https://stellar.expert/explorer/testnet";
