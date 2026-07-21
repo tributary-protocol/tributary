@@ -10,9 +10,10 @@ export default function LanguageSwitcher() {
       onChange={(e) => setLanguage(e.target.value as Language)}
       aria-label="Select Language"
     >
-    <option value="en">EN</option>
-    <option value="vi">VI</option>
-    <option value="ru">RU</option>
+      <option value="en">EN</option>
+      <option value="vi">VI</option>
+      <option value="it">IT</option>
+      <option value="tr">TR</option>
     </select>
   );
 }
