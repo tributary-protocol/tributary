@@ -85,6 +85,16 @@ describe("i18n persistence", () => {
     expect(readSavedLanguage()).toBe("tr");
   });
 
+  it("reads a saved locale from localStorage (ru)", () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, "ru");
+    expect(readSavedLanguage()).toBe("ru");
+  });
+
+  it("reads a saved locale from localStorage (ja)", () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, "ja");
+    expect(readSavedLanguage()).toBe("ja");
+  });
+
   it("persists locale selection directly", () => {
     persistLanguage("vi");
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("vi");
@@ -117,9 +127,9 @@ describe("i18n persistence", () => {
     const select = screen.getByRole("combobox") as HTMLSelectElement;
     expect(select.value).toBe("en");
 
-    fireEvent.change(select, { target: { value: "vi" } });
+    fireEvent.change(select, { target: { value: "ja" } });
 
-    expect(select.value).toBe("vi");
-    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("vi");
+    expect(select.value).toBe("ja");
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("ja");
   });
 });
