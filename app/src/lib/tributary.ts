@@ -7,6 +7,15 @@ import {
 } from "@stellar/freighter-api";
 
 export type { Recipient };
+export {
+  checkTrustlines,
+  clearTrustlineCache,
+} from "./trustlines";
+export type {
+  TrustlineStatus,
+  RecipientTrustline,
+  TrustlineCheckResult,
+} from "./trustlines";
 
 export const RPC_URL = "https://soroban-testnet.stellar.org";
 export const EXPLORER = "https://stellar.expert/explorer/testnet";
@@ -15,16 +24,19 @@ export const CONTRACT_ID = networks.testnet.contractId;
 export interface Token {
   code: string;
   contract: string;
+  decimals: number;
 }
 
 export const TOKENS: Token[] = [
   {
     code: "XLM",
     contract: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+    decimals: 7,
   },
   {
     code: "USDC",
     contract: "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+    decimals: 6,
   },
 ];
 
@@ -35,6 +47,22 @@ export interface SplitView {
   recipients: Recipient[];
   shares: number[];
   controller: string | undefined;
+}
+
+function toSplitView(
+  id: bigint,
+  split: {
+    recipients: Recipient[];
+    shares: number[];
+    controller: string | undefined;
+  },
+): SplitView {
+  return {
+    id,
+    recipients: [...split.recipients],
+    shares: [...split.shares],
+    controller: split.controller,
+  };
 }
 
 export function readClient(): Client {
@@ -77,16 +105,16 @@ export async function fetchSplits(limit = 25): Promise<SplitView[]> {
     ids.map(async (id) => {
       const { result } = await client.get_split({ id });
       if (result.isErr()) return null;
-      const split = result.unwrap();
-      return {
-        id,
-        recipients: [...split.recipients],
-        shares: [...split.shares],
-        controller: split.controller,
-      };
+      return toSplitView(id, result.unwrap());
     }),
   );
   return splits.filter((s): s is SplitView => s !== null);
+}
+
+export async function fetchSplitById(id: bigint): Promise<SplitView | null> {
+  const { result } = await readClient().get_split({ id });
+  if (result.isErr()) return null;
+  return toSplitView(id, result.unwrap());
 }
 
 export async function fetchMineIds(creator: string): Promise<Set<string>> {
@@ -253,6 +281,10 @@ export function recipientLabel(r: Recipient): string {
     : `split #${String(r.values[0])}`;
 }
 
+export function splitPath(id: bigint | string): string {
+  return `/split/${String(id)}`;
+}
+
 export function shortAddress(addr: string): string {
   return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
 }
@@ -264,22 +296,34 @@ export class ConversionError extends RangeError {
   }
 }
 
-// Stellar classic assets always use 7 decimals through their SAC.
-export function toStroops(units: string): bigint {
+// Convert a decimal string to the smallest unit (stroops) based on token decimals
+export function toStroops(units: string, decimals: number = 7): bigint {
   if (typeof units !== "string" || !/^\d+\.?\d*$|^\.\d+$/.test(units)) {
     throw new ConversionError(
       `Invalid amount: "${units}". Use a plain decimal number with no sign or exponent.`,
     );
   }
   const [whole, frac = ""] = units.split(".");
-  const padded = (frac + "0000000").slice(0, 7);
-  return BigInt(whole || "0") * 10_000_000n + BigInt(padded);
+  const zeros = "0".repeat(decimals);
+  const padded = (frac + zeros).slice(0, decimals);
+  const divisor = BigInt(10 ** decimals);
+  return BigInt(whole || "0") * divisor + BigInt(padded);
 }
 
-export function fromStroops(stroops: bigint): string {
-  return (Number(stroops) / 10_000_000).toLocaleString(undefined, {
-    maximumFractionDigits: 7,
-  });
+// Convert from smallest units (stroops) to decimal string based on token
+// decimals. Pure bigint math so values above 2^53 stay exact.
+export function fromStroops(stroops: bigint, decimals: number = 7): string {
+  const negative = stroops < 0n;
+  const abs = negative ? -stroops : stroops;
+  const divisor = 10n ** BigInt(decimals);
+  const whole = abs / divisor;
+  const frac = abs % divisor;
+
+  const wholeStr = whole.toLocaleString(undefined);
+  const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
+  const sign = negative ? "-" : "";
+
+  return fracStr ? `${sign}${wholeStr}.${fracStr}` : `${sign}${wholeStr}`;
 }
 
 /** Format a decimal-string amount with locale-aware thousands separators. */
