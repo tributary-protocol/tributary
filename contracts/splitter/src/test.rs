@@ -1,4 +1,4 @@
-#![cfg(test)]
+
 #![allow(
     clippy::cast_lossless,
     clippy::cast_possible_truncation,
@@ -1897,4 +1897,33 @@ fn single_recipient_gets_full_amount() {
 
     assert_eq!(token_client.balance(&a), amount);
     assert_eq!(token_client.balance(&payer), 0);
+}
+
+#[test]
+fn splits_of_preserves_creation_order() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    let id1 = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let id2 = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let id3 = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    let splits = s.client.splits_of(&creator);
+    assert_eq!(splits, vec![&s.env, id1, id2, id3]);
 }
