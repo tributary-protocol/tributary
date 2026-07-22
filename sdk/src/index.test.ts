@@ -1,7 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decodeEvent } from "./index.js";
+import { decodeEvent, rpc, waitForConfirmation } from "./index.js";
 import { nativeToScVal, xdr } from "@stellar/stellar-sdk";
+
+const { Server: RpcServer, Api } = rpc;
+
+// waitForConfirmation constructs its own RpcServer internally, so we stub the
+// shared prototype method it ends up calling. t.mock.method restores it after
+// each test. Poll/timeout values are kept tiny so the polling and timeout paths
+// run in milliseconds.
+const RPC_URL = "https://rpc.example.test";
 
 test("decodeEvent decodes SplitCreated event from ScVal", () => {
   const topic = [
@@ -145,4 +153,86 @@ test("decodeEvent returns null for invalid or unrecognized events", () => {
   assert.equal(decodeEvent(null as any), null);
   assert.equal(decodeEvent({ topic: [], value: null }), null);
   assert.equal(decodeEvent({ topic: [nativeToScVal("UnknownEvent"), nativeToScVal(1n)], value: null }), null);
+});
+
+test("waitForConfirmation returns immediately on a successful transaction", async (t) => {
+  const response = { status: Api.GetTransactionStatus.SUCCESS, marker: "ok" };
+  const getTransaction = t.mock.method(
+    RpcServer.prototype,
+    "getTransaction",
+    async () => response,
+  );
+
+  const result = await waitForConfirmation("txhash", {
+    rpcUrl: RPC_URL,
+    pollInterval: 5,
+    timeout: 100,
+  });
+
+  assert.equal(result, response);
+  assert.equal(result.status, Api.GetTransactionStatus.SUCCESS);
+  assert.equal(getTransaction.mock.callCount(), 1);
+});
+
+test("waitForConfirmation returns immediately on a failed transaction", async (t) => {
+  const response = { status: Api.GetTransactionStatus.FAILED, marker: "boom" };
+  const getTransaction = t.mock.method(
+    RpcServer.prototype,
+    "getTransaction",
+    async () => response,
+  );
+
+  const result = await waitForConfirmation("txhash", {
+    rpcUrl: RPC_URL,
+    pollInterval: 5,
+    timeout: 100,
+  });
+
+  assert.equal(result, response);
+  assert.equal(result.status, Api.GetTransactionStatus.FAILED);
+  assert.equal(getTransaction.mock.callCount(), 1);
+});
+
+test("waitForConfirmation polls until the transaction is confirmed", async (t) => {
+  const pending = { status: Api.GetTransactionStatus.NOT_FOUND };
+  const success = { status: Api.GetTransactionStatus.SUCCESS };
+  let calls = 0;
+  const getTransaction = t.mock.method(
+    RpcServer.prototype,
+    "getTransaction",
+    async () => {
+      calls += 1;
+      return calls < 3 ? pending : success;
+    },
+  );
+
+  const result = await waitForConfirmation("txhash", {
+    rpcUrl: RPC_URL,
+    pollInterval: 5,
+    timeout: 1_000,
+  });
+
+  assert.equal(result, success);
+  // Two NOT_FOUND responses, then SUCCESS on the third poll.
+  assert.equal(getTransaction.mock.callCount(), 3);
+});
+
+test("waitForConfirmation throws once the timeout deadline passes", async (t) => {
+  const getTransaction = t.mock.method(
+    RpcServer.prototype,
+    "getTransaction",
+    async () => ({ status: Api.GetTransactionStatus.NOT_FOUND }),
+  );
+
+  await assert.rejects(
+    waitForConfirmation("txhash", {
+      rpcUrl: RPC_URL,
+      pollInterval: 10,
+      timeout: 40,
+    }),
+    /Transaction txhash was not confirmed within/,
+  );
+
+  // It should have polled at least once before giving up.
+  assert.ok(getTransaction.mock.callCount() >= 1);
 });
