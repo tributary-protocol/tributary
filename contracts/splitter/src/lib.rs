@@ -31,18 +31,41 @@ const TTL_EXTEND_TO: u32 = 120 * DAY_LEDGERS;
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Error {
+    /// Code 1. The recipient list is empty.
+    /// Raised by `create_split`, `update_split` (via `validate`), and
+    /// `pay_many` (empty `ids` list).
     NoRecipients = 1,
+    /// Code 2. The `recipients` and `shares` vectors have different lengths.
+    /// Raised by `create_split`, `update_split` (via `validate`), and
+    /// `pay_many` (mismatched `ids`/`amounts`).
     LengthMismatch = 2,
+    /// Code 3. A share value is `0`.
+    /// Raised by `create_split` and `update_split` (via `validate`).
     ZeroShare = 3,
     /// Code 4. Shares do not sum to `TOTAL_SHARES` (`10_000`), or the sum
     /// overflows `u32`.
     /// Raised by `create_split` and `update_split` (via `validate`).
     BadShareTotal = 4,
+    /// Code 5. The split `id` does not exist in storage.
+    /// Raised by `pay`, `pay_many`, `update_split`, `transfer_control`,
+    /// `distribute`, `preview_payout`, and `get_split` (all via `load`).
     SplitNotFound = 5,
+    /// Code 6. An edit was attempted on a split with `controller == None`.
+    /// Raised by `update_split` and `transfer_control`.
     SplitImmutable = 6,
+    /// Code 7. The payment amount is zero or negative.
+    /// Raised by `pay`, `pay_many`, `deposit`, and `preview_payout`.
     InvalidAmount = 7,
+    /// Code 8. `distribute` was called on a split/token with an empty
+    /// escrow balance.
+    /// Raised by `distribute`.
     NothingToDistribute = 8,
+    /// Code 9. More than `MAX_RECIPIENTS` (32) recipients were supplied.
+    /// Raised by `create_split` and `update_split` (via `validate`).
     TooManyRecipients = 9,
+    /// Code 10. A `Recipient::Split(child)` reference is unknown, or a split
+    /// references itself (directly or as its own update target).
+    /// Raised by `create_split` and `update_split` (via `validate`).
     BadChildSplit = 10,
     /// An arithmetic path produced a value that does not fit the i128 the
     /// contract stores. Can only happen if a share exceeds `TOTAL_SHARES`, which
@@ -167,17 +190,8 @@ impl Splitter {
     /// Registers a new split and returns its id. Shares are basis points
     /// and must sum to exactly `10_000`. Passing a controller makes the
     /// split mutable by that address; passing None locks it forever.
-    ///
-    /// # Errors
-    ///
-    /// * `NoRecipients` - if `recipients` is empty.
-    /// * `TooManyRecipients` - if `recipients` exceeds `MAX_RECIPIENTS`.
-    /// * `LengthMismatch` - if `recipients` and `shares` have different lengths.
-    /// * `ZeroShare` - if any share is zero.
-    /// * `BadShareTotal` - if shares do not sum to `TOTAL_SHARES`.
-    /// * `BadChildSplit` - if a child split reference is invalid.
     pub fn create_split(
-        env: &Env,
+        env: Env,
         creator: Address,
         recipients: Vec<Recipient>,
         shares: Vec<u32>,
@@ -185,7 +199,7 @@ impl Splitter {
     ) -> Result<u64, Error> {
         creator.require_auth();
         let id: u64 = env.storage().instance().get(&DataKey::Count).unwrap_or(0);
-        validate(env, id, &recipients, &shares)?;
+        validate(&env, id, &recipients, &shares)?;
         let split = Split {
             recipients,
             shares,
@@ -202,26 +216,21 @@ impl Splitter {
             .storage()
             .persistent()
             .get(&index_key)
-            .unwrap_or_else(|| Vec::new(env));
+            .unwrap_or_else(|| Vec::new(&env));
         created.push_back(id);
         env.storage().persistent().set(&index_key, &created);
         env.storage()
             .persistent()
             .extend_ttl(&index_key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
-        SplitCreated { id, creator }.publish(env);
+        SplitCreated { id, creator }.publish(&env);
         Ok(id)
     }
 
     /// Moves `amount` of `token` from the payer to every recipient of the
     /// split in one call. Rounding dust goes to the last recipient.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAmount` - if `amount` is not positive.
-    /// * `SplitNotFound` - if `id` does not exist.
     pub fn pay(
-        env: &Env,
+        env: Env,
         from: Address,
         id: u64,
         token: Address,
@@ -231,23 +240,16 @@ impl Splitter {
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
-        let split = load(env, id)?;
-        payout(env, &split, &from, &token, amount);
-        SplitPaid { id, token, amount }.publish(env);
+        let split = load(&env, id)?;
+        payout(&env, &split, &from, &token, amount);
+        SplitPaid { id, token, amount }.publish(&env);
         Ok(())
     }
 
     /// Pays several splits from one signer in a single transaction.
     /// `ids` and `amounts` pair up positionally; any failure reverts all.
-    ///
-    /// # Errors
-    ///
-    /// * `NoRecipients` - if `ids` or `amounts` is empty.
-    /// * `LengthMismatch` - if `ids` and `amounts` have different lengths.
-    /// * `InvalidAmount` - if any amount is not positive.
-    /// * `SplitNotFound` - if any `id` does not exist.
     pub fn pay_many(
-        env: &Env,
+        env: Env,
         from: Address,
         ids: Vec<u64>,
         amounts: Vec<i128>,
@@ -268,62 +270,83 @@ impl Splitter {
         for i in 0..ids.len() {
             let id = ids.get_unchecked(i);
             let amount = amounts.get_unchecked(i);
-            let split = load(env, id)?;
-            payout(env, &split, &from, &token, amount);
+            let split = load(&env, id)?;
+            payout(&env, &split, &from, &token, amount);
             SplitPaid {
                 id,
                 token: token.clone(),
                 amount,
             }
-            .publish(env);
+            .publish(&env);
+        }
+        Ok(())
+    }
+
+    /// Pays several splits from one signer in a single transaction, each
+    /// with its own token. `ids`, `amounts`, and `tokens` pair up
+    /// positionally; any failure reverts all.
+    pub fn pay_many_multi(
+        env: Env,
+        from: Address,
+        ids: Vec<u64>,
+        amounts: Vec<i128>,
+        tokens: Vec<Address>,
+    ) -> Result<(), Error> {
+        from.require_auth();
+        if ids.is_empty() {
+            return Err(Error::NoRecipients);
+        }
+        if ids.len() != amounts.len() || ids.len() != tokens.len() {
+            return Err(Error::LengthMismatch);
+        }
+        for amount in amounts.iter() {
+            if amount <= 0 {
+                return Err(Error::InvalidAmount);
+            }
+        }
+        for i in 0..ids.len() {
+            let id = ids.get_unchecked(i);
+            let amount = amounts.get_unchecked(i);
+            let token = tokens.get_unchecked(i);
+            let split = load(&env, id)?;
+            payout(&env, &split, &from, &token, amount);
+            SplitPaid {
+                id,
+                token: token.clone(),
+                amount,
+            }
+            .publish(&env);
         }
         Ok(())
     }
 
     /// Replaces the recipients and shares of a mutable split.
     ///
-    /// # Errors
-    ///
-    /// * `SplitNotFound` - if `id` does not exist.
-    /// * `SplitImmutable` - if the split has no controller.
-    /// * `NoRecipients` - if `recipients` is empty.
-    /// * `TooManyRecipients` - if `recipients` exceeds `MAX_RECIPIENTS`.
-    /// * `LengthMismatch` - if `recipients` and `shares` have different lengths.
-    /// * `ZeroShare` - if any share is zero.
-    /// * `BadShareTotal` - if shares do not sum to `TOTAL_SHARES`.
-    /// * `BadChildSplit` - if a child split reference is invalid.
     /// Rejected while the split holds a balance in any token: a depositor
     /// sees the routing table at deposit time, and letting the controller
     /// swap it out before `distribute` runs would let them redirect money
     /// that already arrived. Call `distribute` for every token in
     /// `held_tokens` first.
     pub fn update_split(
-        env: &Env,
+        env: Env,
         id: u64,
         recipients: Vec<Recipient>,
         shares: Vec<u32>,
     ) -> Result<(), Error> {
-        let mut split = load(env, id)?;
+        let mut split = load(&env, id)?;
         let controller = split.controller.clone().ok_or(Error::SplitImmutable)?;
         controller.require_auth();
         if !Self::held_tokens(env.clone(), id).is_empty() {
             return Err(Error::SplitHasBalance);
         }
-        validate(env, id, &recipients, &shares)?;
+        validate(&env, id, &recipients, &shares)?;
         split.recipients = recipients;
         split.shares = shares;
         env.storage().persistent().set(&DataKey::Split(id), &split);
-        SplitUpdated { id }.publish(env);
+        SplitUpdated { id }.publish(&env);
         Ok(())
     }
 
-    /// Hands control of a mutable split to another address, or locks it
-    /// forever when the new controller is None.
-    ///
-    /// # Errors
-    ///
-    /// * `SplitNotFound` - if `id` does not exist.
-    /// * `SplitImmutable` - if the split has no controller.
     /// Proposes transferring control to a new address (two-step), or locks the
     /// split forever when `new_controller` is `None`.
     ///
@@ -333,7 +356,7 @@ impl Splitter {
     ///
     /// When `None`, control is renounced immediately and irreversibly.
     pub fn transfer_control(
-        env: &Env,
+        env: Env,
         id: u64,
         new_controller: Option<Address>,
     ) -> Result<(), Error> {
@@ -413,13 +436,7 @@ impl Splitter {
 
     /// Closes a split and reclaims its storage. Only the controller can do this,
     /// and only if the split holds no balances.
-    ///
-    /// # Errors
-    ///
-    /// * `SplitNotFound` - if `id` does not exist.
-    /// * `SplitImmutable` - if the split has no controller.
-    /// * `SplitHasBalance` - if the split still holds funds.
-    pub fn close_split(env: &Env, id: u64) -> Result<(), Error> {
+    pub fn close_split(env: Env, id: u64) -> Result<(), Error> {
         let split = load(&env, id)?;
         let controller = split.controller.ok_or(Error::SplitImmutable)?;
         controller.require_auth();
@@ -445,17 +462,13 @@ impl Splitter {
     /// than the requested `amount`, so fee-on-transfer tokens that deliver
     /// less than requested cannot over-credit the split.
     ///
-    /// # Errors
-    ///
-    /// * `InvalidAmount` - if `amount` is not positive.
-    /// * `SplitNotFound` - if `id` does not exist.
     /// The routing table cannot be redirected out from under this deposit:
     /// `update_split` refuses to run while the split holds a balance in any
     /// token, so whoever controls the split must `distribute` first. This
     /// only matters for mutable splits (`controller: Some(_)`) — immutable
     /// splits have no routing table to change in the first place.
     pub fn deposit(
-        env: &Env,
+        env: Env,
         from: Address,
         id: u64,
         token: Address,
@@ -479,11 +492,6 @@ impl Splitter {
 
     /// Pays out everything credited to the split for the given token.
     /// Anyone can call this; the routing table decides where funds go.
-    ///
-    /// # Errors
-    ///
-    /// * `SplitNotFound` - if `id` does not exist.
-    /// * `NothingToDistribute` - if the split holds no balance for `token`.
     pub fn distribute(env: Env, id: u64, token: Address) -> Result<i128, Error> {
         let (split, amount) = distribute_node(&env, id, &token)?;
         payout(
@@ -560,12 +568,7 @@ impl Splitter {
 
     /// Returns the exact per-recipient amounts a payment of `amount` would
     /// produce, without moving any funds.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAmount` - if `amount` is not positive.
-    /// * `SplitNotFound` - if `id` does not exist.
-    pub fn preview_payout(env: &Env, id: u64, amount: i128) -> Result<Vec<i128>, Error> {
+    pub fn preview_payout(env: Env, id: u64, amount: i128) -> Result<Vec<i128>, Error> {
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
@@ -581,16 +584,10 @@ impl Splitter {
             .unwrap_or(0)
     }
 
-    #[must_use]
     pub fn has_split(env: Env, id: u64) -> bool {
         env.storage().persistent().has(&DataKey::Split(id))
     }
 
-    /// Returns the split configuration for `id`.
-    ///
-    /// # Errors
-    ///
-    /// * `SplitNotFound` - if `id` does not exist.
     pub fn get_split(env: Env, id: u64) -> Result<Split, Error> {
         load(&env, id)
     }
