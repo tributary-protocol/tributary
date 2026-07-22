@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { walletClient, readClient, SplitView, Recipient } from "../lib/tributary";
+import { walletClient, SplitView, Recipient } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import RecipientEditor, {
   Row,
@@ -7,6 +7,7 @@ import RecipientEditor, {
   toRecipient,
   toShares,
 } from "./RecipientEditor";
+import FeeHint from "./FeeHint";
 
 function toRows(split: SplitView): Row[] {
   return split.recipients.map((r: Recipient, i: number) => ({
@@ -31,7 +32,6 @@ export default function ManageSplit({
   const [rows, setRows] = useState<Row[]>([]);
   const [transferTo, setTransferTo] = useState("");
   const [confirmLock, setConfirmLock] = useState(false);
-  const [pendingAddr, setPendingAddr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -49,21 +49,6 @@ export default function ManageSplit({
       select(selectedSplitId);
     }
   }, [selectedSplitId, mine]);
-
-  useEffect(() => {
-    if (!splitId) {
-      setPendingAddr(null);
-      return;
-    }
-    let active = true;
-    readClient()
-      .pending_controller({ id: BigInt(splitId) })
-      .then(({ result }) => {
-        if (active) setPendingAddr(result ?? null);
-      })
-      .catch(() => {});
-    return () => { active = false; };
-  }, [splitId]);
 
   if (!wallet || mine.length === 0) return null;
 
@@ -138,26 +123,6 @@ export default function ManageSplit({
     });
   }
 
-  async function acceptTransfer() {
-    await run(async () => {
-      const tx = await walletClient(wallet!).accept_control({
-        id: BigInt(splitId),
-      });
-      const { result } = await tx.signAndSend();
-      return result.isOk() ? "Control accepted. You are now the controller." : "Accept failed.";
-    });
-  }
-
-  async function cancelTransfer() {
-    await run(async () => {
-      const tx = await walletClient(wallet!).cancel_transfer({
-        id: BigInt(splitId),
-      });
-      const { result } = await tx.signAndSend();
-      return result.isOk() ? "Pending transfer cancelled." : "Cancel failed.";
-    });
-  }
-
   async function lock() {
     if (!confirmLock) {
       setConfirmLock(true);
@@ -178,13 +143,43 @@ export default function ManageSplit({
     setConfirmLock(false);
   }
 
-  const isPendingTarget = pendingAddr === wallet;
+  const updateFee = useMemo(() => {
+    if (rows.length === 0 || rowsError(rows, t)) {
+      return null;
+    }
+    return () =>
+      walletClient(wallet!).update_split({
+        id: BigInt(splitId),
+        recipients: rows.map(toRecipient),
+        shares: toShares(rows),
+      });
+  }, [rows, wallet, splitId, t]);
+
+  const transferFee = useMemo(() => {
+    if (!transferTo.trim() || !/^G[A-Z2-7]{55}$/.test(transferTo.trim())) {
+      return null;
+    }
+    return () =>
+      walletClient(wallet!).transfer_control({
+        id: BigInt(splitId),
+        new_controller: transferTo.trim(),
+      });
+  }, [transferTo, wallet, splitId]);
+
+  const lockFee = useMemo(() => {
+    return () =>
+      walletClient(wallet!).transfer_control({
+        id: BigInt(splitId),
+        new_controller: undefined,
+      });
+  }, [wallet, splitId]);
 
   return (
     <section className="card">
       <h2>{t("manageTitle")}</h2>
       <div className="row">
-        <select value={splitId} onChange={(e) => select(e.target.value)}>
+        <label htmlFor="manage-split-select" className="visually-hidden">{t("chooseSplitControl")}</label>
+        <select id="manage-split-select" value={splitId} onChange={(e) => select(e.target.value)}>
           <option value="">{t("chooseSplitControl")}</option>
           {mine.map((s) => (
             <option key={String(s.id)} value={String(s.id)}>
@@ -195,56 +190,34 @@ export default function ManageSplit({
       </div>
       {splitId !== "" && (
         <>
-          {pendingAddr && !isPendingTarget && (
-            <p className="hint">
-              Pending transfer to {pendingAddr.slice(0, 4)}…{pendingAddr.slice(-4)}.
-            </p>
-          )}
-          {isPendingTarget && (
-            <div className="row">
-              <span className="hint">
-                {pendingAddr.slice(0, 4)}…{pendingAddr.slice(-4)} is proposed as controller.
-              </span>
-              <button disabled={busy} onClick={acceptTransfer}>
-                {busy && <span className="btn-spinner" />}
-                Accept control
-              </button>
-              <button className="ghost" disabled={busy} onClick={cancelTransfer}>
-                {busy && <span className="btn-spinner" />}
-                Decline
-              </button>
-            </div>
-          )}
-
           <RecipientEditor rows={rows} onChange={setRows} />
+          <FeeHint assemble={updateFee} labelKey="estimatedUpdateFee" />
           <div className="row">
             <button disabled={busy} onClick={update}>
               {busy && <span className="btn-spinner" />}
               {t("updateButton")}
             </button>
           </div>
+          <FeeHint assemble={transferFee} labelKey="estimatedTransferFee" />
           <div className="row">
+            <label htmlFor="controller-input" className="visually-hidden">{t("placeholderController")}</label>
             <input
+              id="controller-input"
               placeholder={t("placeholderController")}
               value={transferTo}
               onChange={(e) => setTransferTo(e.target.value)}
               disabled={confirmLock}
             />
-            <button className="ghost" disabled={busy || isPendingTarget} onClick={proposeTransfer}>
+            <button className="ghost" disabled={busy} onClick={proposeTransfer}>
               {busy && <span className="btn-spinner" />}
               Propose transfer
             </button>
-            {pendingAddr && (
-              <button className="ghost" disabled={busy} onClick={cancelTransfer}>
-                {busy && <span className="btn-spinner" />}
-                Cancel transfer
-              </button>
-            )}
             <button className="ghost" disabled={busy} onClick={lock}>
               {busy && <span className="btn-spinner" />}
               {confirmLock ? t("confirmLockButton") : t("lockButton")}
             </button>
           </div>
+          <FeeHint assemble={lockFee} labelKey="estimatedLockFee" />
           {confirmLock && (
             <div className="lock-confirm" role="alertdialog" aria-live="assertive">
               <p>

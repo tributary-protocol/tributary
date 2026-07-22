@@ -10,6 +10,14 @@ npm install
 npm start
 ```
 
+To re-scan from a specific ledger without editing `state.json`, pass
+`--from-ledger`. It overrides the saved cursor for the initial scan, then normal
+cursor persistence resumes:
+
+```bash
+npm start -- --from-ledger 581235
+```
+
 Each event becomes one line in `events.ndjson`:
 
 ```json
@@ -20,7 +28,14 @@ The RPC cursor is persisted to `state.json`, so restarts continue where they lef
 
 ## Configuration
 
+Copy `.env.example` to `.env` and override any values you need:
+
+```bash
+cp .env.example .env
+```
+
 Environment variables, all optional:
+
 
 | Variable | Default | Meaning |
 | --- | --- | --- |

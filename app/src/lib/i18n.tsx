@@ -1,6 +1,25 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type Language = "en" | "vi";
+export type Language = "en" | "vi" | "it" | "tr";
+
+export const LANGUAGE_STORAGE_KEY = "tributary-lang";
+
+export function readSavedLanguage(): Language {
+  if (typeof localStorage === "undefined") {
+    return "en";
+  }
+
+  const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+  return saved === "vi" || saved === "it" || saved === "tr" || saved === "en" ? saved : "en";
+}
+
+export function persistLanguage(lang: Language) {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+}
 
 const translations = {
   en: {
@@ -34,6 +53,7 @@ const translations = {
     placeholderAddress: "G… recipient address",
     placeholderSplit: "Split id",
     addRecipient: "Add recipient",
+    importCsv: "Import CSV",
     pctOfTotal: "{pct}% of 100%",
     // PaySplit
     payTitle: "Pay through a split",
@@ -103,6 +123,13 @@ const translations = {
     activityControlMoved: "control moved",
     activityTx: "tx",
     activitySplitNum: "split #{id}",
+    // FeeHint
+    estimatedFee: "Estimated fee",
+    estimatedDepositFee: "Estimated deposit fee",
+    estimatedDistributeFee: "Estimated distribute fee",
+    estimatedUpdateFee: "Estimated update fee",
+    estimatedTransferFee: "Estimated transfer fee",
+    estimatedLockFee: "Estimated lock fee",
     // Footer
     contractOnTestnet: "Contract on testnet",
   },
@@ -137,6 +164,7 @@ const translations = {
     placeholderAddress: "Địa chỉ người nhận bắt đầu bằng G…",
     placeholderSplit: "Mã danh sách chia",
     addRecipient: "Thêm người nhận",
+    importCsv: "Nhập CSV",
     pctOfTotal: "{pct}% của 100%",
     // PaySplit
     payTitle: "Thanh toán qua danh sách chia",
@@ -206,8 +234,319 @@ const translations = {
     activityControlMoved: "đã chuyển quyền",
     activityTx: "tx",
     activitySplitNum: "danh sách chia #{id}",
+    // FeeHint
+    estimatedFee: "Phí ước tính",
+    estimatedDepositFee: "Phí ký quỹ ước tính",
+    estimatedDistributeFee: "Phí phân phối ước tính",
+    estimatedUpdateFee: "Phí cập nhật ước tính",
+    estimatedTransferFee: "Phí chuyển quyền ước tính",
+    estimatedLockFee: "Phí khóa ước tính",
     // Footer
-    contractOnTestnet: "Hợp đồng trên testnet",
+    contractOnTestnet: "Contract on testnet",
+  },
+  ru: {
+    // Header & Navigation
+    connectWallet: "Подключить Freighter",
+    github: "GitHub",
+    testnet: "Тестнет",
+    // Intro
+    introTitle: "Разделение платежей в Stellar",
+    introDesc: "Одна транзакция на входе, каждый получатель получает свою долю. Работает в тестнете.",
+    // ActionPanel tabs
+    tabCreate: "Создать",
+    tabPay: "Оплатить",
+    tabEscrow: "Эскроу",
+    tabManage: "Управление",
+    // CreateSplit
+    createTitle: "Создать разделение",
+    createEditableLabel: "Я смогу редактировать это разделение позже (снимите галочку, чтобы зафиксировать навсегда)",
+    createButton: "Создать разделение",
+    waitingForSignature: "Ожидание подписи…",
+    connectWalletFirst: "Сначала подключите кошелёк.",
+    splitCreated: "Разделение #{id} создано.",
+    contractRejectedSplit: "Контракт отклонил разделение.",
+    // RecipientEditor
+    sharesTotalError: "Доли должны суммироваться до 100%.",
+    sharesGreaterZeroError: "Доли должны быть больше нуля.",
+    recipientRequiredError: "У каждого получателя должен быть адрес или ID разделения.",
+    recipientFormatError: "Адреса получателей должны быть ключами аккаунтов G….",
+    kindAddress: "Адрес",
+    kindSplit: "Разделение",
+    placeholderAddress: "G… адрес получателя",
+    placeholderSplit: "ID разделения",
+    addRecipient: "Добавить получателя",
+    pctOfTotal: "{pct}% из 100%",
+    // PaySplit
+    payTitle: "Оплатить через разделение",
+    chooseSplit: "Выберите разделение",
+    recipientsCount: "{count} получателей",
+    amount: "Сумма",
+    paySuccess: "Оплачено {amount} {token} через разделение #{id}.",
+    payFailed: "Платёж не прошёл.",
+    payButton: "Оплатить",
+    pickSplitAndAmount: "Выберите разделение и сумму.",
+    // EscrowCard
+    escrowTitle: "Эскроу",
+    escrowDesc: "Закройте средства сейчас, выплатите всем позже.",
+    pending: "В ожидании: {amount} {token}",
+    depositButton: "Депозит",
+    distributeButton: "Выплатить",
+    distributeSuccess: "Выплачено {amount} {token} всем получателям.",
+    distributeFailed: "Нечего выплачивать.",
+    depositSuccess: "Депозит {amount} {token} выполнен.",
+    depositFailed: "Депозит не удался.",
+    pickSplit: "Выберите разделение.",
+    working: "Обработка…",
+    // ManageSplit
+    manageTitle: "Управление вашими разделениями",
+    chooseSplitControl: "Выберите разделение, которым вы управляете",
+    updateButton: "Обновить разделение",
+    placeholderController: "G… новый контролёр",
+    transferButton: "Передать",
+    lockButton: "Зафиксировать навсегда",
+    confirmLockButton: "Подтвердить блокировку",
+    updateSuccess: "Разделение обновлено.",
+    updateFailed: "Обновление отклонено.",
+    transferSuccess: "Управление передано.",
+    transferFailed: "Передача отклонена.",
+    lockConfirmPrompt: "Блокировка необратима. Нажмите ещё раз для подтверждения.",
+    lockSuccess: "Разделение зафиксировано навсегда.",
+    lockFailed: "Блокировка отклонена.",
+    controllerFormatError: "Контролёр должен быть ключом аккаунта G….",
+    // SplitList & Detail
+    loadingSplits: "Загрузка разделений…",
+    noSplitsOnContract: "На этом контракте пока нет разделений.",
+    noSplitsPrompt: "Подключите Freighter в тестнете, откройте вкладку Создать и зарегистрируйте первое. XLM в тестнете бесплатный, поэтому попробовать ничего не стоит.",
+    recentSplits: "Недавние разделения",
+    copy: "Копировать",
+    yours: "ваше",
+    mutable: "изменяемое",
+    locked: "зафиксировано",
+    nestedSplit: "разделение #{id}",
+    detailEscrow: "эскроу",
+    detailController: "контролёр: {controller}",
+    detailHistoryTitle: "История платежей и выплат",
+    detailHistoryEmpty: "Платежей или выплат пока нет.",
+    detailHistoryLoading: "Загрузка истории…",
+    // Activity
+    recentActivity: "Недавняя активность",
+    exportCsv: "Экспорт CSV",
+    activityCreated: "создано",
+    activityPaid: "оплачено",
+    activityUpdated: "обновлено",
+    activityDeposit: "депозит",
+    activityDistributed: "выплата",
+    activityControlMoved: "управление передано",
+    activityTx: "транзакция",
+    activitySplitNum: "разделение #{id}",
+    // Footer
+    contractOnTestnet: "Контракт в тестнете",
+  },
+  it: {
+    // Header & Navigation
+    connectWallet: "Connetti Freighter",
+    github: "GitHub",
+    testnet: "Testnet",
+    // Intro
+    introTitle: "Dividi i pagamenti su Stellar",
+    introDesc: "Una transazione in entrata, ogni destinatario pagato per la sua quota. In esecuzione su testnet.",
+    // ActionPanel tabs
+    tabCreate: "Crea",
+    tabPay: "Paga",
+    tabEscrow: "Deposito",
+    tabManage: "Gestisci",
+    // CreateSplit
+    createTitle: "Crea una divisione",
+    createEditableLabel: "Posso modificare questa divisione in seguito (deseleziona per bloccarla per sempre)",
+    createButton: "Crea divisione",
+    waitingForSignature: "In attesa di firma…",
+    connectWalletFirst: "Connetti prima il tuo portafoglio.",
+    splitCreated: "Divisione #{id} creata.",
+    contractRejectedSplit: "Il contratto ha rifiutato la divisione.",
+    // RecipientEditor
+    sharesTotalError: "Le quote devono sommare al 100%.",
+    sharesGreaterZeroError: "Le quote devono essere maggiori di zero.",
+    recipientRequiredError: "Ogni destinatario ha bisogno di un indirizzo o di un id di divisione.",
+    recipientFormatError: "Gli indirizzi dei destinatari devono essere chiavi di account G….",
+    kindAddress: "Indirizzo",
+    kindSplit: "Divisione",
+    placeholderAddress: "Indirizzo destinatario G…",
+    placeholderSplit: "Id divisione",
+    addRecipient: "Aggiungi destinatario",
+    pctOfTotal: "{pct}% del 100%",
+    // PaySplit
+    payTitle: "Paga tramite una divisione",
+    chooseSplit: "Scegli divisione",
+    recipientsCount: "{count} destinatari",
+    amount: "Importo",
+    paySuccess: "Pagati {amount} {token} tramite la divisione #{id}.",
+    payFailed: "Pagamento fallito.",
+    payButton: "Paga",
+    pickSplitAndAmount: "Scegli una divisione e un importo.",
+    trustlineWarningTitle: "Impossibile pagare in {token}",
+    trustlineWarningItem: "{address} non ha una trustline per {token}. Deve aggiungerla prima che questa divisione possa essere pagata in {token}.",
+    trustlineWarningHint: "Il pagamento è bloccato finché tutti i destinatari non potranno ricevere questo token.",
+    trustlineNoticeTitle: "Controllo trustline inconcludente",
+    trustlineNoticeHint: "Impossibile verificare le trustline per alcuni destinatari. Il pagamento potrebbe fallire se non possono ricevere questo token.",
+    // EscrowCard
+    escrowTitle: "Deposito",
+    escrowDesc: "Parcheggia i fondi in una divisione ora, paga tutti più tardi.",
+    pending: "In attesa: {amount} {token}",
+    depositButton: "Deposita",
+    distributeButton: "Distribuisci",
+    distributeSuccess: "Distribuiti {amount} {token} a tutti i destinatari.",
+    distributeFailed: "Niente da distribuire.",
+    depositSuccess: "Depositati {amount} {token}.",
+    depositFailed: "Deposito fallito.",
+    pickSplit: "Scegli una divisione.",
+    working: "Elaborazione…",
+    // ManageSplit
+    manageTitle: "Gestisci le tue divisioni",
+    chooseSplitControl: "Scegli la divisione che controlli",
+    updateButton: "Aggiorna divisione",
+    placeholderController: "Nuovo controllore G…",
+    transferButton: "Trasferisci",
+    lockButton: "Blocca per sempre",
+    confirmLockButton: "Conferma blocco",
+    updateSuccess: "Divisione aggiornata.",
+    updateFailed: "Aggiornamento rifiutato.",
+    transferSuccess: "Controllo trasferito.",
+    transferFailed: "Trasferimento rifiutato.",
+    lockConfirmPrompt: "Il blocco è permanente. Premi di nuovo per confermare.",
+    lockSuccess: "Divisione bloccata per sempre.",
+    lockFailed: "Blocco rifiutato.",
+    controllerFormatError: "Il controllore deve essere una chiave di account G….",
+    // SplitList & Detail
+    loadingSplits: "Caricamento divisioni…",
+    noSplitsOnContract: "Ancora nessuna divisione su questo contratto.",
+    noSplitsPrompt: "Connetti Freighter su testnet, apri la scheda Crea e registra la prima. Gli XLM di testnet sono gratuiti tramite friendbot, quindi non costa nulla provare.",
+    recentSplits: "Divisioni recenti",
+    copy: "Copia",
+    yours: "tua",
+    mutable: "modificabile",
+    locked: "bloccata",
+    nestedSplit: "divisione #{id}",
+    detailEscrow: "deposito",
+    detailController: "controllore: {controller}",
+    detailHistoryTitle: "Cronologia Pagamenti & Distribuzioni",
+    detailHistoryEmpty: "Nessun pagamento o distribuzione ancora.",
+    detailHistoryLoading: "Caricamento cronologia…",
+    // Activity
+    recentActivity: "Attività recente",
+    exportCsv: "Esporta CSV",
+    activityCreated: "creata",
+    activityPaid: "pagata",
+    activityUpdated: "aggiornata",
+    activityDeposit: "deposito",
+    activityDistributed: "distribuita",
+    activityControlMoved: "controllo trasferito",
+    activityTx: "tx",
+    activitySplitNum: "divisione #{id}",
+    // Footer
+    contractOnTestnet: "Contratto su testnet",
+  },
+  tr: {
+    // Header & Navigation
+    connectWallet: "Freighter'ı Bağla",
+    github: "GitHub",
+    testnet: "Testnet",
+    // Intro
+    introTitle: "Stellar'da ödemeleri böl",
+    introDesc: "Tek bir işlem, her alıcıya payına göre ödeme yapılır. Testnet üzerinde çalışıyor.",
+    // ActionPanel tabs
+    tabCreate: "Oluştur",
+    tabPay: "Öde",
+    tabEscrow: "Emanet",
+    tabManage: "Yönet",
+    // CreateSplit
+    createTitle: "Bölme oluştur",
+    createEditableLabel: "Bu bölmeyi daha sonra düzenleyebilirim (sonsuza kadar kilitlemek için işareti kaldırın)",
+    createButton: "Bölme oluştur",
+    waitingForSignature: "İmza bekleniyor…",
+    connectWalletFirst: "Önce cüzdanınızı bağlayın.",
+    splitCreated: "Bölme #{id} oluşturuldu.",
+    contractRejectedSplit: "Sözleşme bölmeyi reddetti.",
+    // RecipientEditor
+    sharesTotalError: "Payların toplamı %100 olmalıdır.",
+    sharesGreaterZeroError: "Paylar sıfırdan büyük olmalıdır.",
+    recipientRequiredError: "Her alıcının bir adresi veya bölme kimliği olmalıdır.",
+    recipientFormatError: "Alıcı adresleri G… ile başlayan hesap anahtarları olmalıdır.",
+    kindAddress: "Adres",
+    kindSplit: "Bölme",
+    placeholderAddress: "G… alıcı adresi",
+    placeholderSplit: "Bölme kimliği",
+    addRecipient: "Alıcı ekle",
+    pctOfTotal: "%100'ün %{pct}'si",
+    // PaySplit
+    payTitle: "Bir bölme aracılığıyla öde",
+    chooseSplit: "Bölme seç",
+    recipientsCount: "{count} alıcı",
+    amount: "Miktar",
+    paySuccess: "#{id} numaralı bölme aracılığıyla {amount} {token} ödendi.",
+    payFailed: "Ödeme başarısız oldu.",
+    payButton: "Öde",
+    pickSplitAndAmount: "Bir bölme ve miktar seçin.",
+    trustlineWarningTitle: "{token} ile ödeme yapılamıyor",
+    trustlineWarningItem: "{address}, {token} için bir güven hattına sahip değil. Bu bölmenin {token} ile ödenebilmesi için bunu eklemeleri gerekir.",
+    trustlineWarningHint: "Tüm alıcılar bu token'ı alabilene kadar ödeme engellenir.",
+    trustlineNoticeTitle: "Güven hattı kontrolü sonuçsuz",
+    trustlineNoticeHint: "Bazı alıcılar için güven hatları doğrulanamadı. Bu token'ı alamazlarsa ödeme başarısız olabilir.",
+    // EscrowCard
+    escrowTitle: "Emanet",
+    escrowDesc: "Fonları şimdi bir bölmeye park edin, herkese daha sonra ödeme yapın.",
+    pending: "Bekleyen: {amount} {token}",
+    depositButton: "Yatır",
+    distributeButton: "Dağıt",
+    distributeSuccess: "{amount} {token} tüm alıcılara dağıtıldı.",
+    distributeFailed: "Dağıtılacak bir şey yok.",
+    depositSuccess: "{amount} {token} yatırıldı.",
+    depositFailed: "Yatırma başarısız oldu.",
+    pickSplit: "Bir bölme seçin.",
+    working: "İşleniyor…",
+    // ManageSplit
+    manageTitle: "Bölmelerinizi yönetin",
+    chooseSplitControl: "Kontrol ettiğiniz bölmeyi seçin",
+    updateButton: "Bölmeyi güncelle",
+    placeholderController: "G… yeni yönetici",
+    transferButton: "Devret",
+    lockButton: "Sonsuza kadar kilitle",
+    confirmLockButton: "Kilidi onayla",
+    updateSuccess: "Bölme güncellendi.",
+    updateFailed: "Güncelleme reddedildi.",
+    transferSuccess: "Kontrol devredildi.",
+    transferFailed: "Devir reddedildi.",
+    lockConfirmPrompt: "Kilitleme kalıcıdır. Onaylamak için tekrar basın.",
+    lockSuccess: "Bölme sonsuza kadar kilitlendi.",
+    lockFailed: "Kilitleme reddedildi.",
+    controllerFormatError: "Yönetici G… ile başlayan bir hesap anahtarı olmalıdır.",
+    // SplitList & Detail
+    loadingSplits: "Bölmeler yükleniyor…",
+    noSplitsOnContract: "Bu sözleşmede henüz hiçbir bölme yok.",
+    noSplitsPrompt: "Testnet üzerinde Freighter'ı bağlayın, Oluştur sekmesini açın ve ilkini kaydedin. Testnet XLM friendbot'tan ücretsizdir, bu yüzden denemek hiçbir şeye mal olmaz.",
+    recentSplits: "Son bölmeler",
+    copy: "Kopyala",
+    yours: "sizin",
+    mutable: "değiştirilebilir",
+    locked: "kilitli",
+    nestedSplit: "bölme #{id}",
+    detailEscrow: "emanet",
+    detailController: "yönetici: {controller}",
+    detailHistoryTitle: "Ödeme ve Dağıtım Geçmişi",
+    detailHistoryEmpty: "Henüz ödeme veya dağıtım yok.",
+    detailHistoryLoading: "Geçmiş yükleniyor…",
+    // Activity
+    recentActivity: "Son etkinlikler",
+    exportCsv: "CSV İndir",
+    activityCreated: "oluşturuldu",
+    activityPaid: "ödendi",
+    activityUpdated: "güncellendi",
+    activityDeposit: "yatırma",
+    activityDistributed: "dağıtıldı",
+    activityControlMoved: "kontrol devredildi",
+    activityTx: "tx",
+    activitySplitNum: "bölme #{id}",
+    // Footer
+    contractOnTestnet: "Sözleşme testnet üzerinde",
   },
 };
 
@@ -220,14 +559,11 @@ interface I18nContextType {
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem("tributary-lang");
-    return (saved === "vi" || saved === "en") ? saved : "en";
-  });
+  const [language, setLanguageState] = useState<Language>(() => readSavedLanguage());
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem("tributary-lang", lang);
+    persistLanguage(lang);
   };
 
   const t = (key: string, variables?: Record<string, string | number>): string => {
