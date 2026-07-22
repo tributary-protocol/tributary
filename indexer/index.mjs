@@ -1,10 +1,11 @@
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { rpc, scValToNative } from "@stellar/stellar-sdk";
 import { initialScanPosition, parseArgs } from "./cli.mjs";
+import { createServer, cursorLedger, decode } from "./replay.mjs";
 import { withRateLimitBackoff } from "./rpc-backoff.mjs";
 import { isCaughtUp } from "./cursor.mjs";
+import { upsertEvents } from "./storage.mjs";
 
 const DEFAULT_RPC_URL = "https://soroban-testnet.stellar.org";
 const DEFAULT_CONTRACT_ID =
@@ -57,15 +58,6 @@ function formatLogEntry(level, message, meta = {}) {
   });
 }
 
-function cursorLedger(cursor) {
-  if (!cursor || typeof cursor !== "string" || !cursor.includes("-")) return null;
-  try {
-    return Number(BigInt(cursor.split("-")[0]) >> 32n);
-  } catch {
-    return null;
-  }
-}
-
 function calculateScanLag(latestLedger, cursor) {
   if (typeof latestLedger !== "number" || latestLedger <= 0) return null;
   const cLedger = typeof cursor === "number" ? cursor : cursorLedger(cursor);
@@ -113,28 +105,6 @@ function loadCursor() {
 
 function saveCursor(cursor) {
   writeFileSync(STATE, JSON.stringify({ cursor }));
-}
-
-function decode(ev) {
-  const record = {
-    ledger: ev.ledger,
-    txHash: ev.txHash,
-    id: ev.id,
-    at: ev.ledgerClosedAt,
-  };
-  try {
-    record.type = scValToNative(ev.topic[0]);
-    if (ev.topic.length > 1) record.split = String(scValToNative(ev.topic[1]));
-    const data = scValToNative(ev.value);
-    if (data && typeof data === "object") {
-      for (const [key, value] of Object.entries(data)) {
-        record[key] = typeof value === "bigint" ? String(value) : value;
-      }
-    }
-  } catch {
-    record.type = "undecoded";
-  }
-  return record;
 }
 
 let isPolling = false;
@@ -231,9 +201,7 @@ async function poll() {
         startLedger = undefined;
       }
 
-      for (const ev of res.events) {
-        appendFileSync(OUT, JSON.stringify(decode(ev)) + "\n");
-      }
+      upsertEvents(OUT, res.events.map(decode));
       totalThisPoll += res.events.length;
 
       if (!res.cursor || res.cursor === cursor) break;
@@ -329,7 +297,7 @@ if (isMain) {
     }
   };
 
-  server = new rpc.Server(RPC_URL);
+  server = createServer(RPC_URL);
 
   process.on("SIGINT", () => handleShutdown("SIGINT"));
   process.on("SIGTERM", () => handleShutdown("SIGTERM"));

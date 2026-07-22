@@ -1,4 +1,3 @@
-#![cfg(test)]
 #![allow(
     clippy::cast_lossless,
     clippy::cast_possible_truncation,
