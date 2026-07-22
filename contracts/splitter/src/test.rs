@@ -1028,7 +1028,7 @@ fn update_split_rejects_shares_not_summing_to_10_000() {
         &vec![&s.env, 10_000],
         &Some(controller.clone()),
     );
-  
+
     let result = s.client.try_update_split(
         &id,
         &vec![&s.env, acct(&a), acct(&b)],
