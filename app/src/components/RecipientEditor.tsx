@@ -11,6 +11,13 @@ export interface Row {
 export function rowsTotal(rows: Row[]): number {
   return rows.reduce((sum, r) => sum + (parseFloat(r.percent) || 0), 0);
 }
+
+export function rowsTotalBps(rows: Row[]): number {
+  return rows.reduce((sum, r) => {
+    const val = parseFloat(r.percent);
+    return sum + (isNaN(val) ? 0 : Math.round(val * 100));
+  }, 0);
+}
 export function rowsError(
   rows: Row[],
   t?: (key: string, variables?: Record<string, string | number>) => string,
