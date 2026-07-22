@@ -744,17 +744,15 @@ fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i12
             continue;
         }
         match split.recipients.get_unchecked(i) {
-            Recipient::Account(addr) => {
-                match client.try_transfer(from, &addr, &part) {
-                    Ok(Ok(())) => {}
-                    _ => {
-                        if from != &vault {
-                            client.transfer(from, &vault, &part);
-                        }
-                        credit_account(env, &addr, token, part);
+            Recipient::Account(addr) => match client.try_transfer(from, &addr, &part) {
+                Ok(Ok(())) => {}
+                _ => {
+                    if from != &vault {
+                        client.transfer(from, &vault, &part);
                     }
+                    credit_account(env, &addr, token, part);
                 }
-            }
+            },
             Recipient::Split(child) => {
                 if from != &vault {
                     client.transfer(from, &vault, &part);
@@ -769,7 +767,9 @@ fn credit_account(env: &Env, account: &Address, token: &Address, amount: i128) {
     let key = DataKey::AccountBalance(account.clone(), token.clone());
     let held: i128 = env.storage().persistent().get(&key).unwrap_or(0);
     env.storage().persistent().set(&key, &(held + amount));
-    env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
 }
 
 fn credit(env: &Env, id: u64, token: &Address, amount: i128) {
