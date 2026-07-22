@@ -58,8 +58,17 @@
     "summarises",
     "keypair",
     "keypairs",
+    "trustline",
+    "trustlines",
+    "behaviour",
+    "finalised",
     "CABC",
-    "CDEF"
+    "CDEF",
+    "ZYVA",
+    "TBXEEZUWEXZYYH",
+    "LJGV",
+    "YQHVWPCLA",
+    "QZOKMVFSVWJQP"
   ],
   "ignoreWords": [],
   "ignorePaths": [

@@ -46,7 +46,7 @@ describe("CreateSplit share validation", () => {
     const firstShare = screen.getByLabelText("Recipient 1 share percentage");
     fireEvent.change(firstShare, { target: { value: "90" } });
 
-    const total = screen.getByText("130% of 100%");
+    const total = screen.getByText((content) => content.includes("130%"));
     expect(total.className).toBe("total");
   });
 

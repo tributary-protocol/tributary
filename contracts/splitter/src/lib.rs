@@ -592,6 +592,10 @@ impl Splitter {
         load(&env, id)
     }
 
+    pub fn recipient_count(env: Env, id: u64) -> Result<u32, Error> {
+        Ok(load(&env, id)?.recipients.len())
+    }
+
     #[must_use]
     pub fn held_tokens(env: Env, id: u64) -> Vec<Address> {
         env.storage()
