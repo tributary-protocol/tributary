@@ -1463,6 +1463,71 @@ fn distribute_cascade_exceeds_max_depth() {
 }
 
 #[test]
+fn distribute_cascade_at_max_depth() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 10_000);
+
+    // Chain five splits deep so a max_depth of exactly MAX_CASCADE_DEPTH (5) is
+    // required to reach the leaf: parent -> child1 -> child2 -> child3 -> child4 -> child5 -> leaf.
+    let child5 = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let child4 = s.client.create_split(
+        &creator,
+        &vec![&s.env, Recipient::Split(child5)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let child3 = s.client.create_split(
+        &creator,
+        &vec![&s.env, Recipient::Split(child4)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let child2 = s.client.create_split(
+        &creator,
+        &vec![&s.env, Recipient::Split(child3)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let child1 = s.client.create_split(
+        &creator,
+        &vec![&s.env, Recipient::Split(child2)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, Recipient::Split(child1)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    s.client.deposit(&payer, &parent, &token_id, &1_000);
+
+    let amount = s
+        .client
+        .distribute_cascade(&parent, &token_id, &MAX_CASCADE_DEPTH);
+    assert_eq!(amount, 1_000);
+
+    // The cascade reached all the way through child5 to the leaf; nothing is
+    // left stuck at any level of the chain.
+    assert_eq!(s.client.balance(&parent, &token_id), 0);
+    assert_eq!(s.client.balance(&child1, &token_id), 0);
+    assert_eq!(s.client.balance(&child2, &token_id), 0);
+    assert_eq!(s.client.balance(&child3, &token_id), 0);
+    assert_eq!(s.client.balance(&child4, &token_id), 0);
+    assert_eq!(s.client.balance(&child5, &token_id), 0);
+    assert_eq!(token_client.balance(&leaf), 1_000);
+}
+
+#[test]
 fn distribute_all_tokens_multiple_balances() {
     let s = setup();
     let creator = Address::generate(&s.env);
@@ -1592,6 +1657,38 @@ fn distribute_all_tokens_too_many_tokens() {
 
     let res = s.client.try_distribute_all_tokens(&id, &Some(tokens));
     assert_eq!(res, Err(Ok(Error::TooManyTokens)));
+}
+
+#[test]
+fn distribute_all_tokens_at_max_tokens() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    let mut tokens = vec![&s.env];
+    for _ in 0..MAX_DISTRIBUTE_TOKENS {
+        let (t, _) = fund_token(&s.env, &payer, 1_000);
+        s.client.deposit(&payer, &id, &t, &1_000);
+        tokens.push_back(t);
+    }
+    assert_eq!(tokens.len(), MAX_DISTRIBUTE_TOKENS);
+
+    let res = s.client.distribute_all_tokens(&id, &Some(tokens.clone()));
+    assert_eq!(res.len(), MAX_DISTRIBUTE_TOKENS);
+    for i in 0..tokens.len() {
+        let dist = res.get_unchecked(i);
+        assert_eq!(dist.token, tokens.get_unchecked(i));
+        assert_eq!(dist.amount, 1_000);
+        assert_eq!(s.client.balance(&id, &dist.token), 0);
+    }
 }
 
 #[test]
