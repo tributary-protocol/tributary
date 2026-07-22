@@ -82,3 +82,5 @@ jobs:
         working-directory: sdk
       - run: npm install && npm run build
         working-directory: app
+      - run: npm test
+        working-directory: app

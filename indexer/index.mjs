@@ -1,8 +1,11 @@
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { rpc, scValToNative } from "@stellar/stellar-sdk";
+import { initialScanPosition, parseArgs } from "./cli.mjs";
+import { createServer, cursorLedger, decode } from "./replay.mjs";
 import { withRateLimitBackoff } from "./rpc-backoff.mjs";
+import { isCaughtUp } from "./cursor.mjs";
+import { upsertEvents } from "./storage.mjs";
 
 const DEFAULT_RPC_URL = "https://soroban-testnet.stellar.org";
 const DEFAULT_CONTRACT_ID =
@@ -55,15 +58,6 @@ function formatLogEntry(level, message, meta = {}) {
   });
 }
 
-function cursorLedger(cursor) {
-  if (!cursor || typeof cursor !== "string" || !cursor.includes("-")) return null;
-  try {
-    return Number(BigInt(cursor.split("-")[0]) >> 32n);
-  } catch {
-    return null;
-  }
-}
-
 function calculateScanLag(latestLedger, cursor) {
   if (typeof latestLedger !== "number" || latestLedger <= 0) return null;
   const cLedger = typeof cursor === "number" ? cursor : cursorLedger(cursor);
@@ -113,33 +107,12 @@ function saveCursor(cursor) {
   writeFileSync(STATE, JSON.stringify({ cursor }));
 }
 
-function decode(ev) {
-  const record = {
-    ledger: ev.ledger,
-    txHash: ev.txHash,
-    id: ev.id,
-    at: ev.ledgerClosedAt,
-  };
-  try {
-    record.type = scValToNative(ev.topic[0]);
-    if (ev.topic.length > 1) record.split = String(scValToNative(ev.topic[1]));
-    const data = scValToNative(ev.value);
-    if (data && typeof data === "object") {
-      for (const [key, value] of Object.entries(data)) {
-        record[key] = typeof value === "bigint" ? String(value) : value;
-      }
-    }
-  } catch {
-    record.type = "undecoded";
-  }
-  return record;
-}
-
 let isPolling = false;
 let shutdownRequested = false;
 let intervalId;
 let backoffTimeoutId;
 let resumeBackoff;
+let pendingStartLedger;
 
 function sleepUnlessShuttingDown(delayMs) {
   return new Promise((resolve) => {
@@ -189,7 +162,9 @@ function handleShutdown(signal) {
 async function poll() {
   if (shutdownRequested) return;
   isPolling = true;
-  let cursor = loadCursor();
+  const initialPosition = initialScanPosition(pendingStartLedger, loadCursor());
+  let cursor = initialPosition.cursor;
+  let startLedger = initialPosition.startLedger;
   const filters = [{ type: "contract", contractIds: [CONTRACT_ID] }];
   let totalThisPoll = 0;
   let latestLedgerSeen = null;
@@ -198,7 +173,9 @@ async function poll() {
     for (;;) {
       if (shutdownRequested) break;
       let request;
-      if (cursor) {
+      if (startLedger !== undefined) {
+        request = { startLedger, filters, limit: 100 };
+      } else if (cursor) {
         request = { cursor, filters, limit: 100 };
       } else {
         const latestLedger = await rpcCall(() => server.getLatestLedger());
@@ -219,16 +196,19 @@ async function poll() {
         latestLedgerSeen = res.latestLedger;
       }
 
-      for (const ev of res.events) {
-        appendFileSync(OUT, JSON.stringify(decode(ev)) + "\n");
+      if (startLedger !== undefined) {
+        pendingStartLedger = undefined;
+        startLedger = undefined;
       }
+
+      upsertEvents(OUT, res.events.map(decode));
       totalThisPoll += res.events.length;
 
       if (!res.cursor || res.cursor === cursor) break;
       cursor = res.cursor;
       saveCursor(cursor);
       if (shutdownRequested) break;
-      if (res.events.length < 100 && cursorLedger(cursor) >= res.latestLedger) {
+      if (isCaughtUp({ eventCount: res.events.length, pageLimit: 100, cursor, latestLedger: res.latestLedger })) {
         break;
       }
     }
@@ -284,7 +264,20 @@ if (isMain) {
     process.exit(1);
   }
 
+  const args = parseArgs();
+  if (!args.ok) {
+    console.error(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: "error",
+        message: args.error,
+      })
+    );
+    process.exit(1);
+  }
+
   ({ RPC_URL, CONTRACT_ID, LOG_LEVEL } = config.value);
+  pendingStartLedger = args.value.fromLedger;
   OUT = process.env.OUT ?? "events.ndjson";
   STATE = process.env.STATE ?? "state.json";
   POLL_MS = Number(process.env.POLL_MS ?? 10_000);
@@ -304,7 +297,7 @@ if (isMain) {
     }
   };
 
-  server = new rpc.Server(RPC_URL);
+  server = createServer(RPC_URL);
 
   process.on("SIGINT", () => handleShutdown("SIGINT"));
   process.on("SIGTERM", () => handleShutdown("SIGTERM"));

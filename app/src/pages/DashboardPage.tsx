@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   fetchActivity,
   fetchMineIds,
@@ -12,6 +12,7 @@ import {
 import ActionPanel from "../components/ActionPanel";
 import SplitList from "../components/SplitList";
 import Activity from "../components/Activity";
+import RefreshError from "../components/RefreshError";
 
 const REFRESH_MS = 30_000;
 
@@ -31,6 +32,7 @@ export default function DashboardPage({
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -45,12 +47,18 @@ export default function DashboardPage({
       setActivity(nextActivity);
       setMine(nextMine);
       setError(null);
+      setRefreshError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      if (loading) {
+        setError(errorMsg);
+      } else {
+        setRefreshError(errorMsg);
+      }
     } finally {
       setLoading(false);
     }
-  }, [wallet]);
+  }, [wallet, loading]);
 
   useEffect(() => {
     refresh();
@@ -82,6 +90,16 @@ export default function DashboardPage({
       </motion.section>
 
       {error && <div className="error">{error}</div>}
+
+      <AnimatePresence>
+        {refreshError && (
+          <RefreshError
+            error={refreshError}
+            onRetry={refresh}
+            onDismiss={() => setRefreshError(null)}
+          />
+        )}
+      </AnimatePresence>
 
       <motion.div
         {...rise}

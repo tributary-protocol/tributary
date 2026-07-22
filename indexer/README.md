@@ -10,6 +10,14 @@ npm install
 npm start
 ```
 
+To re-scan from a specific ledger without editing `state.json`, pass
+`--from-ledger`. It overrides the saved cursor for the initial scan, then normal
+cursor persistence resumes:
+
+```bash
+npm start -- --from-ledger 581235
+```
+
 Each event becomes one line in `events.ndjson`:
 
 ```json
@@ -18,9 +26,29 @@ Each event becomes one line in `events.ndjson`:
 
 The RPC cursor is persisted to `state.json`, so restarts continue where they left off instead of re-indexing.
 
+## Replay a ledger range
+
+Replay an inclusive ledger range into the same event store:
+
+```bash
+npm run replay -- 580000 590000
+```
+
+The replay command uses the same `RPC_URL`, `CONTRACT_ID`, and `OUT` configuration as
+the poller. Events are inserted or updated by their RPC event ID, so running the same replay more
+than once produces the same stored output. Replay does not change the live poller's
+cursor in `STATE`.
+
 ## Configuration
 
+Copy `.env.example` to `.env` and override any values you need:
+
+```bash
+cp .env.example .env
+```
+
 Environment variables, all optional:
+
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
