@@ -1,0 +1,23 @@
+{
+  "name": "tributary-example-cli",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A tiny CLI wrapping tributary-sdk for quick testing on Stellar testnet",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "tributary-cli": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && node dist/cli.js",
+    "test": "npm run build && node --test dist/*.test.js"
+  },
+  "dependencies": {
+    "tributary-sdk": "file:../../sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  }
+}
