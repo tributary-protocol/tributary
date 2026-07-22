@@ -1,0 +1,20 @@
+{
+  "name": "tributary-example-create-and-pay",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Standalone Node example: create a split and pay through it on Stellar testnet using tributary-sdk",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && node dist/create-and-pay.js",
+    "test": "npm run build && node --test dist/*.test.js"
+  },
+  "dependencies": {
+    "tributary-sdk": "file:../../sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  }
+}
