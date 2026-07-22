@@ -950,7 +950,6 @@ fn immutable_split_cannot_be_updated() {
 }
 
 #[test]
-#[test]
 fn update_split_rejects_while_balance_outstanding() {
     let s = setup();
     let creator = Address::generate(&s.env);
