@@ -1,4 +1,3 @@
-#![cfg(test)]
 #![allow(
     clippy::cast_lossless,
     clippy::cast_possible_truncation,
@@ -1089,6 +1088,10 @@ fn every_error_code_maps_to_its_triggering_call() {
     );
     assert_eq!(
         s.client.try_preview_payout(&id, &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+    assert_eq!(
+        s.client.try_preview_payout(&id, &-1_000),
         Err(Ok(Error::InvalidAmount))
     );
 
