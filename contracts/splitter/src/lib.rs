@@ -739,14 +739,7 @@ fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
     Ok(out)
 }
 
-fn payout(
-    env: &Env,
-    split: &Split,
-    from: &Address,
-    token: &Address,
-    amount: i128,
-    parent_id: u64,
-) {
+fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i128, parent_id: u64) {
     let client = token::Client::new(env, token);
     let vault = env.current_contract_address();
     let parts = amounts(env, split, amount).unwrap_or_else(|_| Vec::new(env));
