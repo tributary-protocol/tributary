@@ -1,0 +1,23 @@
+{
+  "name": "Tributary DevSpace",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  },
+  "postCreateCommand": "rustup target add wasm32v1-none && cargo build --release --target wasm32v1-none -p tributary-splitter && npm install --prefix sdk && npm run build --prefix sdk && npm install --prefix app"
+}

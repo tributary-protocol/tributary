@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { SplitView } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 import CreateSplit from "./CreateSplit";
 import PaySplit from "./PaySplit";
 import EscrowCard from "./EscrowCard";
@@ -12,12 +13,15 @@ type Tab = (typeof TABS)[number];
 export default function ActionPanel({
   wallet,
   splits,
+  selectedSplitId,
   onChanged,
 }: {
   wallet: string | null;
   splits: SplitView[];
+  selectedSplitId?: string;
   onChanged: () => void;
 }) {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("Create");
 
   const controlsSomething = splits.some((s) => s.controller === wallet);
@@ -27,16 +31,16 @@ export default function ActionPanel({
   return (
     <div className="panel">
       <div className="tabs" role="tablist">
-        {tabs.map((t) => (
+        {tabs.map((tabItem) => (
           <button
-            key={t}
+            key={tabItem}
             role="tab"
-            aria-selected={active === t}
-            className={active === t ? "tab active" : "tab"}
-            onClick={() => setTab(t)}
+            aria-selected={active === tabItem}
+            className={active === tabItem ? "tab active" : "tab"}
+            onClick={() => setTab(tabItem)}
           >
-            {t}
-            {active === t && (
+            {t("tab" + tabItem)}
+            {active === tabItem && (
               <motion.span
                 className="tab-line"
                 layoutId="tab-line"
@@ -58,11 +62,27 @@ export default function ActionPanel({
             <CreateSplit wallet={wallet} onCreated={onChanged} />
           )}
           {active === "Pay" && (
-            <PaySplit wallet={wallet} splits={splits} onPaid={onChanged} />
+            <PaySplit
+              wallet={wallet}
+              splits={splits}
+              selectedSplitId={selectedSplitId}
+              onPaid={onChanged}
+            />
           )}
-          {active === "Escrow" && <EscrowCard wallet={wallet} splits={splits} />}
+          {active === "Escrow" && (
+            <EscrowCard
+              wallet={wallet}
+              splits={splits}
+              selectedSplitId={selectedSplitId}
+            />
+          )}
           {active === "Manage" && (
-            <ManageSplit wallet={wallet} splits={splits} onChanged={onChanged} />
+            <ManageSplit
+              wallet={wallet}
+              splits={splits}
+              selectedSplitId={selectedSplitId}
+              onChanged={onChanged}
+            />
           )}
         </motion.div>
       </AnimatePresence>

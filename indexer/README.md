@@ -10,6 +10,14 @@ npm install
 npm start
 ```
 
+To re-scan from a specific ledger without editing `state.json`, pass
+`--from-ledger`. It overrides the saved cursor for the initial scan, then normal
+cursor persistence resumes:
+
+```bash
+npm start -- --from-ledger 581235
+```
+
 Each event becomes one line in `events.ndjson`:
 
 ```json
@@ -18,9 +26,29 @@ Each event becomes one line in `events.ndjson`:
 
 The RPC cursor is persisted to `state.json`, so restarts continue where they left off instead of re-indexing.
 
+## Replay a ledger range
+
+Replay an inclusive ledger range into the same event store:
+
+```bash
+npm run replay -- 580000 590000
+```
+
+The replay command uses the same `RPC_URL`, `CONTRACT_ID`, and `OUT` configuration as
+the poller. Events are inserted or updated by their RPC event ID, so running the same replay more
+than once produces the same stored output. Replay does not change the live poller's
+cursor in `STATE`.
+
 ## Configuration
 
+Copy `.env.example` to `.env` and override any values you need:
+
+```bash
+cp .env.example .env
+```
+
 Environment variables, all optional:
+
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -29,6 +57,9 @@ Environment variables, all optional:
 | `OUT` | `events.ndjson` | output file |
 | `STATE` | `state.json` | cursor file |
 | `POLL_MS` | `10000` | poll interval |
+| `BACKOFF_INITIAL_MS` | `1000` | initial delay after an RPC rate-limit response |
+| `BACKOFF_MAX_MS` | `60000` | maximum exponential backoff delay |
+| `LOG_LEVEL` | `info` | log verbosity (`debug`, `info`, `warn`, `error`) |
 
 ## Docker
 
@@ -69,6 +100,9 @@ By default, the Docker image is configured to write to `/app/data/events.ndjson`
 | `OUT` | `/app/data/events.ndjson` | Output events file path |
 | `STATE` | `/app/data/state.json` | Cursor state file path |
 | `POLL_MS` | `10000` | Polling interval in milliseconds |
+| `BACKOFF_INITIAL_MS` | `1000` | Initial rate-limit backoff delay in milliseconds |
+| `BACKOFF_MAX_MS` | `60000` | Maximum rate-limit backoff delay in milliseconds |
+| `LOG_LEVEL` | `info` | Log verbosity (`debug`, `info`, `warn`, `error`) |
 
 ## CSV export
 
@@ -79,4 +113,3 @@ node export-csv.mjs > events.csv
 ```
 
 Note that public RPC only retains about a week of events. For a full history from genesis, run against your own RPC with extended retention, or start the indexer early and keep it running.
-

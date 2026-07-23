@@ -1,29 +1,16 @@
 {
   "name": "tributary-indexer",
-  "private": true,
-  "version": "0.2.0",
-  "type": "module",
-  "description": "Event-sourced indexer and query service for the Tributary splitter contract",
-  "license": "Apache-2.0",
+  "version": "0.1.0",
+  "description": "Polls splitter contract events into a local ndjson log",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
-    "migrate": "tsx src/db/migrate.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "test": "node --test",
+    "start": "node index.mjs",
+    "replay": "node replay-command.mjs"
   },
+  "license": "Apache-2.0",
+  "type": "module",
+  "private": true,
   "dependencies": {
-    "@hono/node-server": "^1.14.1",
-    "@stellar/stellar-sdk": "^14.5.0",
-    "hono": "^4.7.10",
-    "pg": "^8.13.6"
-  },
-  "devDependencies": {
-    "@types/pg": "^8.11.11",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "vitest": "^3.1.1"
+    "@stellar/stellar-sdk": "^14.6.1"
   }
 }

@@ -5,6 +5,7 @@ test_snapshots/
 .stellar/
 .env
 .env.*
+!.env.example
 
 .vercel
 indexer/events.ndjson

@@ -1,100 +1,65 @@
-import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { useState } from "react";
+import { motion } from "motion/react";
 import {
-  readClient,
   recipientLabel,
-  fromStroops,
   SplitView,
-  TOKENS,
   EXPLORER,
 } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 import { CopyButton } from "./CopyButton";
-
-function Detail({ split }: { split: SplitView }) {
-  const [balances, setBalances] = useState<{ code: string; amount: bigint }[]>([]);
-
-  useEffect(() => {
-    let active = true;
-    Promise.all(
-      TOKENS.map(async (t) => {
-        const { result } = await readClient().balance({
-          id: split.id,
-          token: t.contract,
-        });
-        return { code: t.code, amount: result };
-      }),
-    ).then((all) => {
-      if (active) setBalances(all.filter((b) => b.amount > 0n));
-    });
-    return () => {
-      active = false;
-    };
-  }, [split.id]);
-
-  return (
-    <motion.div
-      className="detail"
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: "auto" }}
-      exit={{ opacity: 0, height: 0 }}
-      transition={{ duration: 0.22, ease: "easeOut" }}
-      style={{ overflow: "hidden" }}
-    >
-      {split.recipients.map((r, i) => (
-        <div className="detail-row" key={i}>
-          <span className="mono">
-            {r.tag === "Account" ? r.values[0] : `split #${String(r.values[0])}`}
-          </span>
-          <span>{(split.shares[i] / 100).toFixed(2).replace(/\.?0+$/, "")}%</span>
-        </div>
-      ))}
-      {split.controller && (
-        <div className="detail-row">
-          <span className="mono">controller: {split.controller}</span>
-        </div>
-      )}
-      {balances.map((b) => (
-        <div className="detail-row" key={b.code}>
-          <span>escrow</span>
-          <span>
-            {fromStroops(b.amount)} {b.code}
-          </span>
-        </div>
-      ))}
-    </motion.div>
-  );
-}
+import { ShareButton } from "./ShareButton";
 
 export default function SplitList({
   splits,
   loading,
   mine,
+  onOpenSplit,
 }: {
   splits: SplitView[];
   loading: boolean;
   mine: Set<string>;
+  onOpenSplit: (id: string) => void;
 }) {
-  const [open, setOpen] = useState<string | null>(null);
+  const { t } = useTranslation();
+  const [search, setSearch] = useState("");
 
-  if (loading) return <p className="note">Loading splits…</p>;
+  if (loading) return <p className="note">{t("loadingSplits")}</p>;
+
   if (splits.length === 0) {
     return (
       <div className="empty">
-        <p>No splits on this contract yet.</p>
-        <p className="note">
-          Connect Freighter on testnet, open the Create tab and register the
-          first one. Testnet XLM is free from friendbot, so it costs nothing to
-          try.
-        </p>
+        <p>{t("noSplitsOnContract")}</p>
+        <p className="note">{t("noSplitsPrompt")}</p>
       </div>
     );
   }
 
+  const searchLower = search.toLowerCase();
+  const filteredSplits = splits.filter((s) => {
+    if (!searchLower) return true;
+    if (String(s.id).includes(searchLower)) return true;
+    return s.recipients.some((r) =>
+      String(r.values[0]).toLowerCase().includes(searchLower)
+    );
+  });
+
   return (
     <section>
-      <h2>Recent splits</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <h2>Recent splits</h2>
+        <input
+          type="text"
+          placeholder="Search by ID or address..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ padding: "4px 8px", borderRadius: "4px", border: "1px solid #444", background: "#1a1a1a", color: "inherit" }}
+        />
+      </div>
       <div className="splits">
-        {splits.map((s, index) => {
+        {filteredSplits.length === 0 && (
+          <p className="note">No splits match your search.</p>
+        )}
+        {filteredSplits.map((s, index) => {
           const key = String(s.id);
           return (
             <motion.div
@@ -105,17 +70,27 @@ export default function SplitList({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: Math.min(index * 0.04, 0.3) }}
               whileHover={{ y: -2 }}
-              onClick={() => setOpen(open === key ? null : key)}
+              role="button"
+              tabIndex={0}
+              aria-label={`Open split #${key}`}
+              onClick={() => onOpenSplit(key)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpenSplit(key);
+                }
+              }}
             >
               <div className="split-head">
                 <span className="split-id">#{key}</span>
-                <CopyButton text={String(key)}>
-                  Copy
-                </CopyButton>
+                <CopyButton text={String(key)}>{t("copy")}</CopyButton>
+                <ShareButton splitId={key} />
                 <span>
-                  {mine.has(key) && <span className="badge own">yours</span>}
+                  {mine.has(key) && (
+                    <span className="badge own">{t("yours")}</span>
+                  )}
                   <span className="badge">
-                    {s.controller ? "mutable" : "locked"}
+                    {s.controller ? t("mutable") : t("locked")}
                   </span>
                 </span>
               </div>
@@ -132,20 +107,23 @@ export default function SplitList({
                         >
                           {recipientLabel(r)}
                         </a>
-                        <CopyButton text={r.values[0]}>
-                          Copy
-                        </CopyButton>
+                        <CopyButton text={r.values[0]}>{t("copy")}</CopyButton>
                       </>
                     ) : (
-                      <span className="nested">{recipientLabel(r)}</span>
+                      <span className="nested">
+                        {t("nestedSplit", { id: r.values[0].toString() })}
+                      </span>
                     )}
-                    <span>{(s.shares[i] / 100).toFixed(2).replace(/\.?0+$/, "")}%</span>
+                    <span>
+                      {(s.shares[i] / 100).toFixed(2).replace(/\.?0+$/, "")}%
+                    </span>
                   </li>
                 ))}
               </ul>
-              <AnimatePresence>
-                {open === key && <Detail split={s} />}
-              </AnimatePresence>
+              <p className="note">
+                Open this split to see balances, copy a link, pay it or manage
+                it.
+              </p>
             </motion.div>
           );
         })}

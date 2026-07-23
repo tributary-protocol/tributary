@@ -6,10 +6,39 @@ build:
 	@echo "Building contract..."
 	cargo build --release --target wasm32v1-none -p tributary-splitter
 
+# Build and optimize the contract wasm with wasm-opt (in-place)
+build-optimized:
+	@echo "Building contract..."
+	cargo build --release --target wasm32v1-none -p tributary-splitter
+	@echo "Original size:"
+	ls -lh target/wasm32v1-none/release/tributary_splitter.wasm
+	@echo "Running wasm-opt -Oz..."
+	wasm-opt -Oz \
+	  -o target/wasm32v1-none/release/tributary_splitter.wasm \
+	  target/wasm32v1-none/release/tributary_splitter.wasm
+	@echo "Optimized size:"
+	ls -lh target/wasm32v1-none/release/tributary_splitter.wasm
+
 # Run all tests
 test:
 	@echo "Running tests..."
 	cargo test
+
+# Prove the money-safety invariants over all valid share vectors (fast tier,
+# bounded amounts). Needs Kani: cargo install --locked kani-verifier && cargo kani setup
+verify:
+	@echo "Proving conservation over bounded amounts..."
+	cargo kani -p tributary-splitter-proofs --harness proof_bounded_ --harness proof_shares_
+
+# Prove the same invariants over every i128 amount at fixed share vectors, and
+# that the rounding is exactly floor. Minutes, not seconds — the nightly tier.
+verify-full:
+	@echo "Proving conservation over the full i128 amount range..."
+	cargo kani -p tributary-splitter-proofs --harness proof_full_ --harness proof_floor_
+
+# Break the arithmetic on purpose and check the proofs catch it
+verify-mutants:
+	sh ./scripts/kani-mutation-check.sh
 
 # Deploy the contract (uses provided script)
 deploy:
@@ -21,49 +50,8 @@ demo:
 	@echo "Running demo..."
 	sh ./scripts/demo.sh
 
-# --- Indexer ---
-
-# Build the indexer service
-indexer-build:
-	@echo "Building indexer..."
-	cd indexer && npm run build
-
-# Run the indexer locally with Docker Compose
-indexer-up:
-	@echo "Starting indexer stack..."
-	cd indexer && docker compose up -d --build
-
-# Stop the indexer stack
-indexer-down:
-	@echo "Stopping indexer stack..."
-	cd indexer && docker compose down
-
-# Trigger a projection rebuild
-indexer-rebuild:
-	@echo "Rebuilding projections..."
-	curl -s -X POST http://localhost:3000/admin/rebuild | python -m json.tool
-
-# Trigger reconciliation
-indexer-reconcile:
-	@echo "Running reconciliation..."
-	curl -s -X POST http://localhost:3000/reconcile | python -m json.tool
-
-# Check indexer health
-indexer-health:
-	@echo "Checking health..."
-	curl -s http://localhost:3000/health | python -m json.tool
-
-# Run indexer typecheck
-indexer-typecheck:
-	@echo "Typechecking indexer..."
-	cd indexer && npm run typecheck
-
-# Run indexer tests
-indexer-test:
-	@echo "Running indexer tests..."
-	cd indexer && npm test
-
-# Run migrations locally (requires DATABASE_URL)
-indexer-migrate:
-	@echo "Running migrations..."
-	cd indexer && npm run migrate
+# Run the standalone Node create-and-pay example against testnet
+node-example:
+	@echo "Running node-create-and-pay example..."
+	cd sdk && npm install && npm run build
+	cd examples/node-create-and-pay && npm install && npm start
