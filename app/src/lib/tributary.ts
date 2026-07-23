@@ -246,11 +246,14 @@ export async function fetchActivityForSplit(
   for (const ev of events) {
     let type: unknown;
     let id: unknown;
+    let childId: unknown;
     let amount: bigint | undefined;
     let token: string | undefined;
     try {
       type = scValToNative(ev.topic[0]);
       id = ev.topic.length > 1 ? scValToNative(ev.topic[1]) : undefined;
+      childId =
+        ev.topic.length > 2 ? scValToNative(ev.topic[2]) : undefined;
       const data = scValToNative(ev.value);
       if (data && typeof data === "object" && "amount" in data) {
         amount = data.amount as bigint;
@@ -268,6 +271,7 @@ export async function fetchActivityForSplit(
           eventId: ev.id,
           type,
           id,
+          childId: typeof childId === "bigint" ? childId : undefined,
           amount,
           token,
           ledger: ev.ledger,
