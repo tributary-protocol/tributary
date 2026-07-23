@@ -197,7 +197,7 @@ pub struct Routed {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CreditSource {
     Deposit,
-    Route { parent_id: u64 },
+    Route(u64),
 }
 
 #[contract]
@@ -573,6 +573,7 @@ impl Splitter {
                 &env.current_contract_address(),
                 &token,
                 amount,
+                id,
             );
             Distributed {
                 id,
@@ -754,7 +755,7 @@ fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i12
                 if from != &vault {
                     client.transfer(from, &vault, &part);
                 }
-                credit(env, child, token, part, &CreditSource::Route { parent_id });
+                credit(env, child, token, part, &CreditSource::Route(parent_id));
             }
         }
     }
@@ -788,7 +789,7 @@ fn credit(env: &Env, id: u64, token: &Address, amount: i128, source: &CreditSour
             }
             .publish(env);
         }
-        CreditSource::Route { parent_id } => {
+        CreditSource::Route(parent_id) => {
             Routed {
                 parent_id: *parent_id,
                 child_id: id,
@@ -862,7 +863,14 @@ fn distribute_recursive(
         Err(e) => return Err(e),
     };
 
-    payout(env, &split, &env.current_contract_address(), token, amount);
+    payout(
+        env,
+        &split,
+        &env.current_contract_address(),
+        token,
+        amount,
+        id,
+    );
     Distributed {
         id,
         token: token.clone(),
