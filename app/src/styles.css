@@ -1083,3 +1083,41 @@ select.lang-select:focus {
   }
 }
 
+/* ── RTL Layout Enhancements ─────────────────────────────────── */
+
+[dir="rtl"] {
+  text-align: right;
+}
+
+[dir="rtl"] .btn-spinner {
+  margin-right: 0;
+  margin-left: 6px;
+}
+
+[dir="rtl"] .badge.net {
+  margin-left: 0;
+  margin-right: 2px;
+}
+
+[dir="rtl"] .tooltip-content {
+  text-align: right;
+}
+
+[dir="rtl"] .trustline-warn ul,
+[dir="rtl"] .trustline-notice ul {
+  padding-left: 0;
+  padding-right: 16px;
+}
+
+[dir="rtl"] .share-popover {
+  right: auto;
+  left: 0;
+}
+
+@media (max-width: 480px) {
+  [dir="rtl"] .share-popover {
+    left: auto;
+    right: 0;
+  }
+}
+
