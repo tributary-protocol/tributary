@@ -2,6 +2,8 @@
 
 Thanks for taking the time. This page covers how to get a working setup and what we expect from changes.
 
+[![Clone, Test, Demo Quickstart Workflow](assets/clone-test-demo.svg)](assets/clone-test-demo.svg)
+
 ## Setup
 
 1. Install Rust from https://rustup.rs. The repo has a `rust-toolchain.toml`, so rustup will pick the right toolchain and targets on first build.
