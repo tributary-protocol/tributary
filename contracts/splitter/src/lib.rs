@@ -876,7 +876,7 @@ fn remove_paid(env: &Env, id: u64, recipients: &Vec<Recipient>) {
         };
         let key = DataKey::Paid(addr.clone());
         if let Some(mut ids) = env.storage().persistent().get::<_, Vec<u64>>(&key) {
-            if let Some(idx) = ids.first_index_of(&id) {
+            if let Some(idx) = ids.first_index_of(id) {
                 ids.remove(idx);
                 if ids.is_empty() {
                     env.storage().persistent().remove(&key);

@@ -997,6 +997,7 @@ fn every_error_code_maps_to_its_triggering_call() {
     let a = Address::generate(&s.env);
     let b = Address::generate(&s.env);
     let payer = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
     let (token_id, _) = fund_token(&s.env, &payer, 1_000);
 
     assert_eq!(
@@ -1283,8 +1284,6 @@ fn close_split_reclaims_storage() {
     let creator = Address::generate(&s.env);
     let controller = Address::generate(&s.env);
     let a = Address::generate(&s.env);
-    let b = Address::generate(&s.env);
-    let c = Address::generate(&s.env);
 
     let id = s.client.create_split(
         &creator,
@@ -1796,7 +1795,6 @@ fn distribute_pays_out_the_fee_adjusted_balance() {
     let s = setup();
     let creator = Address::generate(&s.env);
     let a = Address::generate(&s.env);
-    let b = Address::generate(&s.env);
     let payer = Address::generate(&s.env);
     let b = Address::generate(&s.env);
 
