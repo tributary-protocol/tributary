@@ -651,12 +651,7 @@ impl Splitter {
             .unwrap_or_else(|| Vec::new(&env))
     }
 
-    pub fn splits_paying_paged(
-        env: Env,
-        recipient: Address,
-        start: u32,
-        limit: u32,
-    ) -> Vec<u64> {
+    pub fn splits_paying_paged(env: Env, recipient: Address, start: u32, limit: u32) -> Vec<u64> {
         let all: Vec<u64> = env
             .storage()
             .persistent()
@@ -685,7 +680,6 @@ impl Splitter {
             .unwrap_or_else(|| Vec::new(&env));
         all.len()
     }
-
 
     pub fn split_count(env: Env) -> u64 {
         env.storage().instance().get(&DataKey::Count).unwrap_or(0)
@@ -838,7 +832,11 @@ fn push_paid(env: &Env, id: u64, recipients: &Vec<Recipient>) {
     for r in recipients.iter() {
         let addr = match r {
             Recipient::Account(a) => a,
-            Recipient::Split(cid) => match env.storage().persistent().get::<_, Split>(&DataKey::Split(cid)) {
+            Recipient::Split(cid) => match env
+                .storage()
+                .persistent()
+                .get::<_, Split>(&DataKey::Split(cid))
+            {
                 Some(child) => match child.controller {
                     Some(c) => c,
                     None => continue,
@@ -854,8 +852,7 @@ fn push_paid(env: &Env, id: u64, recipients: &Vec<Recipient>) {
             .unwrap_or_else(|| Vec::new(env));
         ids.push_back(id);
         env.storage().persistent().set(&key, &ids);
-        env
-            .storage()
+        env.storage()
             .persistent()
             .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
     }
@@ -865,7 +862,11 @@ fn remove_paid(env: &Env, id: u64, recipients: &Vec<Recipient>) {
     for r in recipients.iter() {
         let addr = match r {
             Recipient::Account(a) => a,
-            Recipient::Split(cid) => match env.storage().persistent().get::<_, Split>(&DataKey::Split(cid)) {
+            Recipient::Split(cid) => match env
+                .storage()
+                .persistent()
+                .get::<_, Split>(&DataKey::Split(cid))
+            {
                 Some(child) => match child.controller {
                     Some(c) => c,
                     None => continue,
@@ -874,19 +875,14 @@ fn remove_paid(env: &Env, id: u64, recipients: &Vec<Recipient>) {
             },
         };
         let key = DataKey::Paid(addr.clone());
-        if let Some(mut ids) = env
-            .storage()
-            .persistent()
-            .get::<_, Vec<u64>>(&key)
-        {
+        if let Some(mut ids) = env.storage().persistent().get::<_, Vec<u64>>(&key) {
             if let Some(idx) = ids.first_index_of(&id) {
                 ids.remove(idx);
                 if ids.is_empty() {
                     env.storage().persistent().remove(&key);
                 } else {
                     env.storage().persistent().set(&key, &ids);
-                    env
-                        .storage()
+                    env.storage()
                         .persistent()
                         .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
                 }

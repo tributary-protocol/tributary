@@ -1286,7 +1286,6 @@ fn close_split_reclaims_storage() {
     let b = Address::generate(&s.env);
     let c = Address::generate(&s.env);
 
-
     let id = s.client.create_split(
         &creator,
         &vec![&s.env, acct(&a)],
@@ -1926,11 +1925,8 @@ fn update_split_re_adding_recipient_reflected_correctly() {
     assert_eq!(s.client.splits_paying(&a), vec![&s.env, id]);
 
     // Remove a
-    s.client.update_split(
-        &id,
-        &vec![&s.env, acct(&b)],
-        &vec![&s.env, 10_000],
-    );
+    s.client
+        .update_split(&id, &vec![&s.env, acct(&b)], &vec![&s.env, 10_000]);
     assert_eq!(s.client.splits_paying(&a), vec![&s.env]);
 
     // Re-add a
@@ -1958,14 +1954,8 @@ fn splits_paying_paged_and_count() {
     }
 
     assert_eq!(s.client.splits_paying_count(&a), 5);
-    assert_eq!(
-        s.client.splits_paying_paged(&a, &0, &2),
-        vec![&s.env, 0, 1]
-    );
-    assert_eq!(
-        s.client.splits_paying_paged(&a, &2, &2),
-        vec![&s.env, 2, 3]
-    );
+    assert_eq!(s.client.splits_paying_paged(&a, &0, &2), vec![&s.env, 0, 1]);
+    assert_eq!(s.client.splits_paying_paged(&a, &2, &2), vec![&s.env, 2, 3]);
     assert_eq!(s.client.splits_paying_paged(&a, &4, &2), vec![&s.env, 4]);
     assert_eq!(s.client.splits_paying_paged(&a, &5, &2), vec![&s.env]);
     assert_eq!(s.client.splits_paying_paged(&a, &0, &0), vec![&s.env]);
@@ -1976,7 +1966,10 @@ fn splits_paying_paged_and_count() {
 
     let stranger = Address::generate(&s.env);
     assert_eq!(s.client.splits_paying_count(&stranger), 0);
-    assert_eq!(s.client.splits_paying_paged(&stranger, &0, &10), vec![&s.env]);
+    assert_eq!(
+        s.client.splits_paying_paged(&stranger, &0, &10),
+        vec![&s.env]
+    );
 }
 
 #[test]
