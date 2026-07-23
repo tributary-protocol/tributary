@@ -2,5 +2,11 @@
   "installCommand": "cd sdk && npm install && npm run build && cd ../app && npm install",
   "buildCommand": "cd app && npm run build",
   "outputDirectory": "app/dist",
-  "framework": null
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }

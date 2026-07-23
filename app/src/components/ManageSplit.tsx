@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { walletClient, SplitView, Recipient } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import RecipientEditor, {
@@ -7,6 +7,7 @@ import RecipientEditor, {
   toRecipient,
   toShares,
 } from "./RecipientEditor";
+import FeeHint from "./FeeHint";
 
 function toRows(split: SplitView): Row[] {
   return split.recipients.map((r: Recipient, i: number) => ({
@@ -19,29 +20,77 @@ function toRows(split: SplitView): Row[] {
 export default function ManageSplit({
   wallet,
   splits,
+  selectedSplitId,
   onChanged,
 }: {
   wallet: string | null;
   splits: SplitView[];
+  selectedSplitId?: string;
   onChanged: () => void;
 }) {
-  const { t } = useTranslation();
   const [splitId, setSplitId] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [transferTo, setTransferTo] = useState("");
+  const [pendingTransfer, setPendingTransfer] = useState<string | null>(null);
   const [confirmLock, setConfirmLock] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const mine = splits.filter((s) => s.controller === wallet);
+  const { t } = useTranslation();
+  const mine = useMemo(
+    () => splits.filter((s) => s.controller === wallet),
+    [splits, wallet],
+  );
+
+  useEffect(() => {
+    if (
+      selectedSplitId !== undefined &&
+      mine.some((s) => String(s.id) === selectedSplitId)
+    ) {
+      select(selectedSplitId);
+    }
+  }, [selectedSplitId, mine]);
+
+  useEffect(() => {
+    if (!wallet || splitId === "") {
+      setPendingTransfer(null);
+      return;
+    }
+
+    let cancelled = false;
+    walletClient(wallet)
+      .pending_controller({ id: BigInt(splitId) })
+      .then(({ result }: { result: string | undefined }) => {
+        if (!cancelled) setPendingTransfer(result ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setPendingTransfer(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet, splitId]);
+
   if (!wallet || mine.length === 0) return null;
 
   function select(id: string) {
     setSplitId(id);
     setConfirmLock(false);
+    setTransferTo("");
     setMessage(null);
     const split = mine.find((s) => String(s.id) === id);
     setRows(split ? toRows(split) : []);
+  }
+
+  // Once control is gone the wallet can no longer act on this split, so
+  // drop the selection instead of leaving a dead editor on screen.
+  function clearSelection() {
+    setSplitId("");
+    setRows([]);
+    setTransferTo("");
+    setPendingTransfer(null);
+    setConfirmLock(false);
   }
 
   async function run(action: () => Promise<string>) {
@@ -74,18 +123,39 @@ export default function ManageSplit({
     });
   }
 
-  async function transfer() {
-    if (!/^G[A-Z2-7]{55}$/.test(transferTo.trim())) {
+  async function proposeTransfer() {
+    const to = transferTo.trim();
+    if (!/^G[A-Z2-7]{55}$/.test(to)) {
       setMessage(t("controllerFormatError"));
       return;
     }
+    if (to === wallet) {
+      setMessage("That address already controls this split.");
+      return;
+    }
+    const id = splitId;
     await run(async () => {
       const tx = await walletClient(wallet!).transfer_control({
-        id: BigInt(splitId),
-        new_controller: transferTo.trim(),
+        id: BigInt(id),
+        new_controller: to,
       });
       const { result } = await tx.signAndSend();
-      return result.isOk() ? t("transferSuccess") : t("transferFailed");
+      if (!result.isOk()) return "Transfer proposal rejected.";
+      setPendingTransfer(to);
+      setTransferTo("");
+      return `Transfer proposed to ${to.slice(0, 4)}…${to.slice(-4)}. They must accept it.`;
+    });
+  }
+
+  async function cancelTransfer() {
+    await run(async () => {
+      const tx = await walletClient(wallet!).cancel_transfer({
+        id: BigInt(splitId),
+      });
+      const { result } = await tx.signAndSend();
+      if (!result.isOk()) return "Transfer cancellation rejected.";
+      setPendingTransfer(null);
+      return "Transfer proposal cancelled.";
     });
   }
 
@@ -95,21 +165,61 @@ export default function ManageSplit({
       setMessage(t("lockConfirmPrompt"));
       return;
     }
+    const id = splitId;
     await run(async () => {
       const tx = await walletClient(wallet!).transfer_control({
-        id: BigInt(splitId),
+        id: BigInt(id),
         new_controller: undefined,
       });
       const { result } = await tx.signAndSend();
-      return result.isOk() ? t("lockSuccess") : t("lockFailed");
+      if (!result.isOk()) return t("lockFailed");
+      clearSelection();
+      return t("lockSuccess");
     });
+    setConfirmLock(false);
   }
+
+  const updateFee = useMemo(() => {
+    if (rows.length === 0 || rowsError(rows, t)) {
+      return null;
+    }
+    return () =>
+      walletClient(wallet!).update_split({
+        id: BigInt(splitId),
+        recipients: rows.map(toRecipient),
+        shares: toShares(rows),
+      });
+  }, [rows, wallet, splitId, t]);
+
+  const transferFee = useMemo(() => {
+    if (
+      pendingTransfer !== null ||
+      !transferTo.trim() ||
+      !/^G[A-Z2-7]{55}$/.test(transferTo.trim())
+    ) {
+      return null;
+    }
+    return () =>
+      walletClient(wallet!).transfer_control({
+        id: BigInt(splitId),
+        new_controller: transferTo.trim(),
+      });
+  }, [pendingTransfer, transferTo, wallet, splitId]);
+
+  const lockFee = useMemo(() => {
+    return () =>
+      walletClient(wallet!).transfer_control({
+        id: BigInt(splitId),
+        new_controller: undefined,
+      });
+  }, [wallet, splitId]);
 
   return (
     <section className="card">
       <h2>{t("manageTitle")}</h2>
       <div className="row">
-        <select value={splitId} onChange={(e) => select(e.target.value)}>
+        <label htmlFor="manage-split-select" className="visually-hidden">{t("chooseSplitControl")}</label>
+        <select id="manage-split-select" value={splitId} onChange={(e) => select(e.target.value)}>
           <option value="">{t("chooseSplitControl")}</option>
           {mine.map((s) => (
             <option key={String(s.id)} value={String(s.id)}>
@@ -121,24 +231,69 @@ export default function ManageSplit({
       {splitId !== "" && (
         <>
           <RecipientEditor rows={rows} onChange={setRows} />
+          <FeeHint assemble={updateFee} labelKey="estimatedUpdateFee" />
           <div className="row">
             <button disabled={busy} onClick={update}>
+              {busy && <span className="btn-spinner" />}
               {t("updateButton")}
             </button>
           </div>
+          <FeeHint assemble={transferFee} labelKey="estimatedTransferFee" />
           <div className="row">
+            <label htmlFor="controller-input" className="visually-hidden">{t("placeholderController")}</label>
             <input
+              id="controller-input"
               placeholder={t("placeholderController")}
               value={transferTo}
               onChange={(e) => setTransferTo(e.target.value)}
+              disabled={confirmLock || pendingTransfer !== null}
             />
-            <button className="ghost" disabled={busy} onClick={transfer}>
-              {t("transferButton")}
+            <button
+              className="ghost"
+              disabled={busy || pendingTransfer !== null}
+              onClick={proposeTransfer}
+            >
+              {busy && <span className="btn-spinner" />}
+              Propose transfer
             </button>
             <button className="ghost" disabled={busy} onClick={lock}>
+              {busy && <span className="btn-spinner" />}
               {confirmLock ? t("confirmLockButton") : t("lockButton")}
             </button>
           </div>
+          {pendingTransfer !== null && (
+            <div className="row" role="status">
+              <span>
+                Transfer pending to {pendingTransfer.slice(0, 4)}…
+                {pendingTransfer.slice(-4)}.
+              </span>
+              <button className="ghost" disabled={busy} onClick={cancelTransfer}>
+                Cancel transfer
+              </button>
+            </div>
+          )}
+          <FeeHint assemble={lockFee} labelKey="estimatedLockFee" />
+          {confirmLock && (
+            <div className="lock-confirm" role="alertdialog" aria-live="assertive">
+              <p>
+                <strong>Lock split #{splitId} permanently?</strong> Nobody —
+                including you — will ever be able to edit its recipients,
+                transfer control, or close it. This cannot be undone.
+              </p>
+              <div className="row">
+                <button className="danger" disabled={busy} onClick={lock}>
+                  Yes, lock it forever
+                </button>
+                <button
+                  className="ghost"
+                  disabled={busy}
+                  onClick={() => setConfirmLock(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
       {message && <p className="note">{message}</p>}
