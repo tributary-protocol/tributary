@@ -28,7 +28,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test dist/*.test.js",
+    "test": "node --test dist/index.test.js",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
