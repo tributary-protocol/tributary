@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
   I18nProvider,
   LANGUAGE_STORAGE_KEY,
@@ -52,6 +52,7 @@ function TestTranslationConsumer() {
 
 describe("i18n persistence and RTL support", () => {
   beforeEach(() => {
+    cleanup();
     vi.stubGlobal("localStorage", createLocalStorageMock());
     localStorage.clear();
     document.documentElement.dir = "ltr";
@@ -59,6 +60,7 @@ describe("i18n persistence and RTL support", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
   });
 
