@@ -1,8 +1,12 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
-export type Language = "en" | "vi" | "it" | "tr" | "ru" | "ja";
+export type Language = "en" | "vi" | "it" | "tr" | "ru" | "ja" | "ar";
 
 export const LANGUAGE_STORAGE_KEY = "tributary-lang";
+
+export function isRtl(lang: Language): boolean {
+  return lang === "ar";
+}
 
 export function readSavedLanguage(): Language {
   if (typeof localStorage === "undefined") {
@@ -10,7 +14,7 @@ export function readSavedLanguage(): Language {
   }
 
   const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return saved === "vi" || saved === "it" || saved === "tr" || saved === "ru" || saved === "ja" || saved === "en" ? saved : "en";
+  return saved === "vi" || saved === "it" || saved === "tr" || saved === "ru" || saved === "ja" || saved === "ar" || saved === "en" ? saved : "en";
 }
 
 export function persistLanguage(lang: Language) {
@@ -667,18 +671,142 @@ const translations = {
     // Footer
     contractOnTestnet: "テストネット上のコントラクト",
   },
+  ar: {
+    // Header & Navigation
+    connectWallet: "ربط محفظة Freighter",
+    github: "GitHub",
+    testnet: "شبكة الاختبار",
+    // Intro
+    introTitle: "تقسيم المدفوعات على Stellar",
+    introDesc: "معاملة واحدة واردة، ودفع حصة كل مستلم. يعمل على شبكة الاختبار.",
+    // ActionPanel tabs
+    tabCreate: "إنشاء",
+    tabPay: "دفع",
+    tabEscrow: "ضمان",
+    tabManage: "إدارة",
+    // CreateSplit
+    createTitle: "إنشاء تقسيم",
+    createEditableLabel: "يمكنني تعديل هذا التقسيم لاحقاً (قم بإلغاء التحديد لإقفاله للأبد)",
+    createButton: "إنشاء التقسيم",
+    waitingForSignature: "في انتظار التوقيع…",
+    connectWalletFirst: "اتصل بمحفظتك أولاً.",
+    splitCreated: "تم إنشاء التقسيم #{id}.",
+    contractRejectedSplit: "رفض العقد التقسيم.",
+    // RecipientEditor
+    sharesTotalError: "يجب أن يبلغ مجموع الحصص 100%.",
+    sharesGreaterZeroError: "يجب أن تكون الحصص أكبر من الصفر.",
+    recipientRequiredError: "يحتاج كل مستلم إلى عنوان أو معرف تقسيم.",
+    recipientFormatError: "يجب أن تكون عناوين المستلمين مفاتيح حسابات تبدأ بـ G….",
+    kindAddress: "عنوان",
+    kindSplit: "تقسيم",
+    placeholderAddress: "G… عنوان المستلم",
+    placeholderSplit: "معرف التقسيم",
+    addRecipient: "إضافة مستلم",
+    importCsv: "استيراد CSV",
+    pctOfTotal: "{pct}% من 100%",
+    useBasisPoints: "استخدام نقاط الأساس",
+    bpsOfTotal: "{bps} من 10,000 نقطة أساس",
+    unitBpsTitle: "نقاط الأساس (100 نقطة أساس = 1%)",
+    unitPctTitle: "نسبة مئوية من إجمالي الدفع. مُخزنة على الشبكة كنقاط أساس.",
+    // PaySplit
+    payTitle: "الدفع عبر تقسيم",
+    chooseSplit: "اختر التقسيم",
+    recipientsCount: "{count} مستلمين",
+    amount: "المبلغ",
+    paySuccess: "تم دفع {amount} {token} عبر التقسيم #{id}.",
+    payFailed: "فشلت عملية الدفع.",
+    payButton: "دفع",
+    pickSplitAndAmount: "اختر تقسيماً ومبلغاً.",
+    trustlineWarningTitle: "لا يمكن الدفع بـ {token}",
+    trustlineWarningItem: "{address} ليس لديه خط ثقة لـ {token}. يجب إضافته قبل إمكانية دفع هذا التقسيم بـ {token}.",
+    trustlineWarningHint: "الدفع محظور حتى يستطيع جميع المستلمين استقبال هذا الرمز.",
+    trustlineNoticeTitle: "فحص خط الثقة غير حاسم",
+    trustlineNoticeHint: "تعذر التحقق من خطوط الثقة لبعض المستلمين. قد يفشل الدفع إذا لم يتمكنوا من استقبال هذا الرمز.",
+    // EscrowCard
+    escrowTitle: "ضمان",
+    escrowDesc: "احفظ الأموال في تقسيم الآن، وادفع للجميع لاحقاً.",
+    pending: "قيد الانتظار: {amount} {token}",
+    depositButton: "إيداع",
+    distributeButton: "توزيع",
+    distributeSuccess: "تم توزيع {amount} {token} على جميع المستلمين.",
+    distributeFailed: "لا يوجد شيء لتوزيعه.",
+    depositSuccess: "تم إيداع {amount} {token}.",
+    depositFailed: "فشل الإيداع.",
+    pickSplit: "اختر تقسيماً.",
+    working: "جاري العمل…",
+    // ManageSplit
+    manageTitle: "إدارة التقسيمات الخاصة بك",
+    chooseSplitControl: "اختر التقسيم الذي تتحكم فيه",
+    updateButton: "تحديث التقسيم",
+    placeholderController: "G… متحكم جديد",
+    transferButton: "نقل التحكم",
+    lockButton: "قفل للأبد",
+    confirmLockButton: "تأكيد القفل",
+    updateSuccess: "تم تحديث التقسيم.",
+    updateFailed: "تم رفض التحديث.",
+    transferSuccess: "تم نقل التحكم.",
+    transferFailed: "تم رفض نقل التحكم.",
+    lockConfirmPrompt: "القفل دائم. اضغط مجدداً للتأكيد.",
+    lockSuccess: "تم قفل التقسيم للأبد.",
+    lockFailed: "تم رفض القفل.",
+    controllerFormatError: "يجب أن يكون المتحكم مفتاح حساب يبدأ بـ G….",
+    // SplitList & Detail
+    loadingSplits: "جاري تحميل التقسيمات…",
+    noSplitsOnContract: "لا توجد تقسيمات على هذا العقد بعد.",
+    noSplitsPrompt: "قم بربط محفظة Freighter على شبكة الاختبار، وافتح تبويب الإنشاء وسجل أول تقسيم. اختبار XLM مجاني من friendbot، لذا لا يكلف شيئاً للتجربة.",
+    recentSplits: "التقسيمات الحديثة",
+    copy: "نسخ",
+    yours: "خاص بك",
+    mutable: "قابل للتعديل",
+    locked: "مقفل",
+    nestedSplit: "تقسيم #{id}",
+    detailEscrow: "ضمان",
+    detailController: "المتحكم: {controller}",
+    detailHistoryTitle: "سجل الدفع والتوزيع",
+    detailHistoryEmpty: "لا توجد عمليات دفع أو توزيع بعد.",
+    detailHistoryLoading: "جاري تحميل السجل…",
+    // Activity
+    recentActivity: "النشاط الحديث",
+    exportCsv: "تصدير CSV",
+    activityCreated: "تم إنشاؤه",
+    activityPaid: "تم دفعه",
+    activityUpdated: "تم تحديثه",
+    activityDeposit: "إيداع",
+    activityDistributed: "تم توزيعه",
+    activityControlMoved: "تم نقل التحكم",
+    activityTx: "معاملة",
+    activitySplitNum: "تقسيم #{id}",
+    // FeeHint
+    estimatedFee: "الرسوم المقدرة",
+    estimatedDepositFee: "رسوم الإيداع المقدرة",
+    estimatedDistributeFee: "رسوم التوزيع المقدرة",
+    estimatedUpdateFee: "رسوم التحديث المقدرة",
+    estimatedTransferFee: "رسوم نقل الملكية المقدرة",
+    estimatedLockFee: "رسوم القفل المقدرة",
+    // Footer
+    contractOnTestnet: "العقد على شبكة الاختبار",
+  },
 };
 
 interface I18nContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   t: (key: string, variables?: Record<string, string | number>) => string;
+  isRtl: boolean;
+  dir: "rtl" | "ltr";
 }
 
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => readSavedLanguage());
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.dir = isRtl(language) ? "rtl" : "ltr";
+      document.documentElement.lang = language;
+    }
+  }, [language]);
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
@@ -696,8 +824,18 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     return text;
   };
 
+  const rtl = isRtl(language);
+
   return (
-    <I18nContext.Provider value={{ language, setLanguage, t }}>
+    <I18nContext.Provider
+      value={{
+        language,
+        setLanguage,
+        t,
+        isRtl: rtl,
+        dir: rtl ? "rtl" : "ltr",
+      }}
+    >
       {children}
     </I18nContext.Provider>
   );
