@@ -640,6 +640,37 @@ fn deposit_credits_split_balance() {
 }
 
 #[test]
+fn balance_returns_zero_for_unknown_split_or_token() {
+    let s = setup();
+
+    // Unknown split id: nothing was ever created under this id, so the
+    // balance read falls through to the `unwrap_or(0)` default.
+    let unknown_token = Address::generate(&s.env);
+    assert_eq!(s.client.balance(&999_999u64, &unknown_token), 0);
+
+    // Known split, unknown token: create a split and deposit token X, then
+    // query a different token Y that was never deposited for this id.
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_x, _token_x_client) = fund_token(&s.env, &payer, 1_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    s.client.deposit(&payer, &id, &token_x, &400);
+
+    let token_y = Address::generate(&s.env);
+    assert_eq!(s.client.balance(&id, &token_y), 0);
+    // The deposited token still reads back its real balance, confirming the
+    // zero above is specific to the unknown token, not a blanket default.
+    assert_eq!(s.client.balance(&id, &token_x), 400);
+}
+
+#[test]
 fn distribute_pays_recipients_and_clears_balance() {
     let s = setup();
     let creator = Address::generate(&s.env);
