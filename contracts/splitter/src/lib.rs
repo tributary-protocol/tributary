@@ -9,8 +9,12 @@
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contractmeta, contracttype, token,
-    Address, Env, Vec, I256,
+    Address, Env, Vec,
 };
+
+pub mod math;
+
+pub use math::{MAX_RECIPIENTS, TOTAL_SHARES};
 
 contractmeta!(key = "name", val = "tributary-splitter");
 contractmeta!(
@@ -18,8 +22,6 @@ contractmeta!(
     val = "https://github.com/tributary-protocol/tributary"
 );
 
-pub const TOTAL_SHARES: u32 = 10_000;
-pub const MAX_RECIPIENTS: u32 = 32;
 pub const MAX_CASCADE_DEPTH: u32 = 5;
 pub const MAX_DISTRIBUTE_TOKENS: u32 = 10;
 
@@ -681,38 +683,27 @@ fn validate(
             }
         }
     }
-    let mut total: u32 = 0;
-    for share in shares.iter() {
-        if share == 0 {
-            return Err(Error::ZeroShare);
-        }
-        total = total.checked_add(share).ok_or(Error::BadShareTotal)?;
-    }
-    if total != TOTAL_SHARES {
-        return Err(Error::BadShareTotal);
-    }
-    Ok(())
+    // Share checks live in `math` so Kani can prove them over all inputs.
+    math::validate_shares(shares.iter()).map_err(|e| match e {
+        math::ShareError::NoRecipients => Error::NoRecipients,
+        math::ShareError::TooManyRecipients => Error::TooManyRecipients,
+        math::ShareError::ZeroShare => Error::ZeroShare,
+        math::ShareError::BadShareTotal => Error::BadShareTotal,
+    })
 }
 
 fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
     let mut out = Vec::new(env);
     let last = split.recipients.len() - 1;
     let mut assigned: i128 = 0;
-    let total = I256::from_i128(env, i128::from(TOTAL_SHARES));
     for i in 0..split.recipients.len() {
         let part = if i == last {
+            // Dust: whatever rounding left over goes to the last recipient,
+            // so the parts sum to `amount` exactly.
             amount - assigned
         } else {
-            // `amount * share` can overflow i128 for large token amounts
-            // (custom high-supply tokens) before the division brings it back
-            // into range. Compute the intermediate in 256-bit space so any
-            // valid i128 amount stays panic- and wrap-free.
-            let product = I256::from_i128(env, amount).mul(&I256::from_i128(
-                env,
-                i128::from(split.shares.get_unchecked(i)),
-            ));
-            let part_i256 = product.div(&total);
-            part_i256.to_i128().ok_or(Error::ArithmeticOverflow)?
+            math::split_part(amount, split.shares.get_unchecked(i))
+                .ok_or(Error::ArithmeticOverflow)?
         };
         out.push_back(part);
         assigned += part;
