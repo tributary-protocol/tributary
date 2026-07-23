@@ -408,7 +408,8 @@ button.tooltip-trigger:focus-visible {
   line-height: 1;
 }
 
-.dupe-note {
+.dupe-note,
+.share-warn {
   color: #d97706;
   border: 1px solid rgba(217, 119, 6, 0.35);
   background: rgba(217, 119, 6, 0.07);

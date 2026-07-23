@@ -49,6 +49,7 @@ const translations = {
     contractRejectedSplit: "Contract rejected the split.",
     // RecipientEditor
     sharesTotalError: "Shares must add up to 100%.",
+    sharesTotalWarn: "Total shares must equal 10,000 bps (100%). Currently {total} bps.",
     sharesGreaterZeroError: "Shares must be greater than zero.",
     recipientRequiredError: "Every recipient needs an address or split id.",
     recipientFormatError: "Recipient addresses must be G… account keys.",
@@ -164,6 +165,7 @@ const translations = {
     contractRejectedSplit: "Hợp đồng đã từ chối danh sách chia.",
     // RecipientEditor
     sharesTotalError: "Tổng tỷ lệ chia phải bằng 100%.",
+    sharesTotalWarn: "Tổng tỷ lệ chia phải bằng 10,000 bps (100%). Hiện tại: {total} bps.",
     sharesGreaterZeroError: "Tỷ lệ chia phải lớn hơn không.",
     recipientRequiredError: "Mỗi người nhận cần có một địa chỉ hoặc mã danh sách chia.",
     recipientFormatError: "Địa chỉ người nhận phải là khóa tài khoản bắt đầu bằng G….",
@@ -377,6 +379,7 @@ const translations = {
     contractRejectedSplit: "Il contratto ha rifiutato la divisione.",
     // RecipientEditor
     sharesTotalError: "Le quote devono sommare al 100%.",
+    sharesTotalWarn: "Le quote totali devono essere 10.000 bps (100%). Attualmente {total} bps.",
     sharesGreaterZeroError: "Le quote devono essere maggiori di zero.",
     recipientRequiredError: "Ogni destinatario ha bisogno di un indirizzo o di un id di divisione.",
     recipientFormatError: "Gli indirizzi dei destinatari devono essere chiavi di account G….",
@@ -480,6 +483,7 @@ const translations = {
     contractRejectedSplit: "Sözleşme bölmeyi reddetti.",
     // RecipientEditor
     sharesTotalError: "Payların toplamı %100 olmalıdır.",
+    sharesTotalWarn: "Toplam paylar 10.000 bps (%100) olmalıdır. Şu anki: {total} bps.",
     sharesGreaterZeroError: "Paylar sıfırdan büyük olmalıdır.",
     recipientRequiredError: "Her alıcının bir adresi veya bölme kimliği olmalıdır.",
     recipientFormatError: "Alıcı adresleri G… ile başlayan hesap anahtarları olmalıdır.",

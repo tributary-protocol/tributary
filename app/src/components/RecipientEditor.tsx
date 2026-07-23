@@ -11,11 +11,18 @@ export interface Row {
 export function rowsTotal(rows: Row[]): number {
   return rows.reduce((sum, r) => sum + (parseFloat(r.percent) || 0), 0);
 }
+
+export function rowsTotalBps(rows: Row[]): number {
+  return rows.reduce((sum, r) => {
+    const val = parseFloat(r.percent);
+    return sum + (isNaN(val) ? 0 : Math.round(val * 100));
+  }, 0);
+}
 export function rowsError(
   rows: Row[],
   t?: (key: string, variables?: Record<string, string | number>) => string,
 ): string | null {
-  if (Math.abs(rowsTotal(rows) - 100) > 0.001) {
+  if (rowsTotalBps(rows) !== 10000) {
     return t ? t("sharesTotalError") : "Shares must add up to 100%.";
   }
   if (rows.some((r) => r.value.trim() === "")) {
@@ -98,7 +105,9 @@ export default function RecipientEditor({
     onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   }
   const total = rowsTotal(rows);
+  const totalBps = rowsTotalBps(rows);
   const dupes = duplicateAddresses(rows);
+  const isInvalidTotal = totalBps !== 10000;
 
   function handleCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -212,6 +221,11 @@ export default function RecipientEditor({
           {Number(total.toFixed(2))}% {t("ofTotal")}
         </span>
       </div>
+      {isInvalidTotal && (
+        <p className="note share-warn" role="alert">
+          ⚠ {t("sharesTotalWarn", { total: totalBps.toLocaleString() })}
+        </p>
+      )}
       {dupes.size > 0 && (
         <p className="note dupe-note">
           ⚠ {t("duplicateRecipientNote", { count: dupes.size })}
