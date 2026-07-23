@@ -9,4 +9,6 @@ test_snapshots/
 .vercel
 indexer/events.ndjson
 indexer/state.json
+indexer/dist/
+indexer/.env
 *.tsbuildinfo
