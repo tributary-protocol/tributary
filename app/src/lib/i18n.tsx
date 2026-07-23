@@ -698,6 +698,7 @@ const translations = {
     contractRejectedSplit: "رفض العقد التقسيم.",
     // RecipientEditor
     sharesTotalError: "يجب أن يبلغ مجموع الحصص 100%.",
+    sharesTotalWarn: "يجب أن يبلغ إجمالي الحصص 10,000 نقطة أساس (100%). حالياً: {total} نقطة أساس.",
     sharesGreaterZeroError: "يجب أن تكون الحصص أكبر من الصفر.",
     recipientRequiredError: "يحتاج كل مستلم إلى عنوان أو معرف تقسيم.",
     recipientFormatError: "يجب أن تكون عناوين المستلمين مفاتيح حسابات تبدأ بـ G….",
