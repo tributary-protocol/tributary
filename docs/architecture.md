@@ -59,6 +59,51 @@ Because distribution trusts whatever routing table is on the split at that momen
 
 Both paths round each recipient's amount down and give the leftover to the last recipient, so the amount in always equals the amount out.
 
+### Two-step control transfer
+
+For a mutable split, `transfer_control(id, Some(new_controller))` records the
+address as `pending_controller(id)` instead of changing `controller`
+immediately. The current controller must authorize the proposal, and the
+proposed controller must later authorize `accept_control(id)` before the
+handoff takes effect. This two-step flow prevents an address from being made
+responsible for a split without its consent and avoids losing control to a
+mistyped or inaccessible address.
+
+While a proposal is pending, the current controller remains in control and may
+remove it with `cancel_transfer(id)`. A new proposal replaces the pending
+address. After acceptance, the pending entry is removed and the accepted
+address becomes the controller.
+
+For example, if Alice proposes Bob, `pending_controller(id)` returns Bob but
+Alice can still update or close the split. Bob becomes controller only after he
+calls `accept_control(id)`. If Alice notices that the proposed address is
+wrong, she can cancel it before Bob accepts. Passing `None` to
+`transfer_control` is different: it immediately removes the controller, with
+no acceptance step. It does not clear an existing pending proposal, so that
+address can still accept and restore control afterward. A controller that
+intends to lock a split permanently must cancel any pending proposal before
+passing `None`.
+
+### Bounded distribution helpers
+
+`distribute_cascade(id, token, max_depth)` drains the selected split and then
+recursively drains child-split balances credited by that distribution. Depth
+zero distributes only the selected split. Each increment permits one more
+child edge, up to `MAX_CASCADE_DEPTH` (5); larger values fail with
+`MaxDepthExceeded`. A child with no balance is skipped, while an empty balance
+on the selected root returns `NothingToDistribute`. The bound keeps recursive
+storage operations and token transfers within a predictable limit; callers can
+invoke the helper again on a deeper child when a tree exceeds it.
+
+`distribute_all_tokens(id, tokens)` drains several token balances for one split
+without traversing child splits. Callers may provide a token list or pass
+`None` to use every token currently recorded by `held_tokens(id)`. At most
+`MAX_DISTRIBUTE_TOKENS` (10) tokens may be supplied or discovered; a longer
+list fails with `TooManyTokens` before any token is processed. Zero-balance
+tokens within an accepted list are skipped. Trees that need both dimensions use
+`distribute_all_tokens` per node or call `distribute_cascade` separately for
+each token.
+
 ### Maximum safe payment amount
 
 Share math is `amount * share / 10_000`, computed in 256-bit space

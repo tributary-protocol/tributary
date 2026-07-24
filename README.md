@@ -110,6 +110,8 @@ examples/node-create-and-pay Node script for the create-then-pay flow (no wallet
 
 [docs/integrations.md](docs/integrations.md#distributing-a-two-level-tree) includes an end-to-end nested split example and shows the multi-call distribution order.
 
+[docs/formal-verification.md](docs/formal-verification.md) records the conservation invariants proven with Kani, the bounds they hold under, and what is still covered only by tests.
+
 ## Contributing
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get set up and what a good change looks like.
