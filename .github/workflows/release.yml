@@ -34,7 +34,7 @@ jobs:
           node-version: 22
       - run: npm ci && npm run build
         working-directory: sdk
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tributary-splitter-wasm
           path: target/wasm32v1-none/release/tributary_splitter.wasm
