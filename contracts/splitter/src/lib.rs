@@ -109,11 +109,28 @@ pub struct TokenDistribution {
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the total number of splits created. Used as a counter for generating
+    /// new split IDs. Value is a `u64` stored in instance storage.
     Count,
+    /// Stores the split configuration for a given split ID. The value is a `Split`
+    /// struct containing recipients, shares, and controller. Stored in persistent
+    /// storage keyed by the split ID.
     Split(u64),
+    /// Stores the escrowed balance for a specific split and token. The value is an
+    /// `i128` representing the amount of the token held in escrow for that split.
+    /// Stored in persistent storage keyed by (split_id, token_address).
     Balance(u64, Address),
+    /// Stores the list of split IDs created by a specific address (creator). The value
+    /// is a `Vec<u64>` containing all split IDs created by that address. Stored in
+    /// persistent storage keyed by the creator's address.
     Created(Address),
+    /// Stores the list of tokens that have non-zero balances for a specific split.
+    /// The value is a `Vec<Address>` of token addresses. Used to efficiently track
+    /// which tokens need distribution. Stored in persistent storage keyed by split ID.
     HeldTokens(u64),
+    /// Stores the pending controller address during a two-step control transfer.
+    /// The value is an `Address` representing the proposed new controller. Stored in
+    /// persistent storage keyed by split ID. Removed after transfer is accepted or cancelled.
     PendingController(u64),
 }
 
