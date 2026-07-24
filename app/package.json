@@ -13,7 +13,7 @@
     "@stellar/freighter-api": "^6.0.1",
     "motion": "^12.42.2",
     "qrcode": "^1.5.4",
-    "react": "^19.2.7",
+    "react": "^19.2.8",
     "react-dom": "^19.2.7",
     "react-router-dom": "^6.30.4",
     "tributary-sdk": "file:../sdk"
