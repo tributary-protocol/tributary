@@ -29,7 +29,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: rustup update stable && rustup target add wasm32v1-none
       - run: cargo build --release --target wasm32v1-none -p tributary-splitter
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: npm ci && npm run build
@@ -58,7 +58,7 @@ jobs:
             --title "${{ github.ref_name }}" \
             --generate-notes
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
