@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import { Recipient } from "../lib/tributary";
+import { useTranslation } from "../lib/i18n";
 import Tooltip from "./Tooltip";
 
 export interface Row {
@@ -6,16 +8,21 @@ export interface Row {
   value: string;
   percent: string;
 }
-
 export function rowsTotal(rows: Row[]): number {
   return rows.reduce((sum, r) => sum + (parseFloat(r.percent) || 0), 0);
 }
 
+export function rowsTotalBps(rows: Row[]): number {
+  return rows.reduce((sum, r) => {
+    const val = parseFloat(r.percent);
+    return sum + (isNaN(val) ? 0 : Math.round(val * 100));
+  }, 0);
+}
 export function rowsError(
   rows: Row[],
   t?: (key: string, variables?: Record<string, string | number>) => string,
 ): string | null {
-  if (Math.abs(rowsTotal(rows) - 100) > 0.001) {
+  if (rowsTotalBps(rows) !== 10000) {
     return t ? t("sharesTotalError") : "Shares must add up to 100%.";
   }
   if (rows.some((r) => r.value.trim() === "")) {
@@ -33,15 +40,31 @@ export function rowsError(
   }
   return null;
 }
-
 export function toRecipient(row: Row): Recipient {
   return row.kind === "address"
     ? { tag: "Account", values: [row.value.trim()] }
     : { tag: "Split", values: [BigInt(row.value)] };
 }
-
 export function toShares(rows: Row[]): number[] {
   return rows.map((r) => Math.round(parseFloat(r.percent) * 100));
+}
+
+export function parseCsv(text: string): Row[] {
+  const lines = text.trim().split("\n");
+  const rows: Row[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (rows.length === 0 && /^(address|value|kind|split|recipient)/i.test(trimmed)) continue;
+    const parts = trimmed.split(",");
+    if (parts.length < 2) continue;
+    const value = parts[0].trim();
+    const percent = parts[1].trim();
+    if (!value || !percent) continue;
+    const kind = /^G[A-Z2-7]{55}$/.test(value) ? "address" : "split";
+    rows.push({ kind, value, percent });
+  }
+  return rows;
 }
 
 /**
@@ -75,62 +98,94 @@ export default function RecipientEditor({
   rows: Row[];
   onChange: (rows: Row[]) => void;
 }) {
+  const { t } = useTranslation();
+  const fileRef = useRef<HTMLInputElement>(null);
+
   function setRow(i: number, patch: Partial<Row>) {
     onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   }
-
   const total = rowsTotal(rows);
+  const totalBps = rowsTotalBps(rows);
   const dupes = duplicateAddresses(rows);
+  const isInvalidTotal = totalBps !== 10000;
+
+  function handleCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      const imported = parseCsv(text);
+      if (imported.length > 0) onChange(imported);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
 
   return (
     <>
       <div className="field-help">
-        <span>Recipient shares</span>
-        <Tooltip label="basis points">
-          Shares are stored in basis points: 1 basis point is 0.01%, so 10,000
-          basis points equals 100%. Enter shares here as percentages.
-        </Tooltip>
+        <span>{t("recipientSharesLabel")}</span>
+        <Tooltip label="basis points">{t("basisPointsExplainer")}</Tooltip>
       </div>
       {rows.map((row, i) => {
-        const isDupe =
-          row.kind === "address" && dupes.has(row.value.trim());
+        const isDupe = row.kind === "address" && dupes.has(row.value.trim());
         return (
           <div className="row" key={i}>
+            <label htmlFor={`kind-${i}`} className="visually-hidden">
+              Recipient type
+            </label>
             <select
+              id={`kind-${i}`}
               className="kind"
               value={row.kind}
               onChange={(e) =>
                 setRow(i, { kind: e.target.value as Row["kind"], value: "" })
               }
+              aria-label={`Recipient type for row ${i + 1}`}
             >
-              <option value="address">Address</option>
-              <option value="split">Split</option>
+              <option value="address">{t("kindAddress")}</option>
+              <option value="split">{t("kindSplit")}</option>
             </select>
+            <label htmlFor={`value-${i}`} className="visually-hidden">
+              {row.kind === "address" ? t("placeholderAddress") : t("placeholderSplit")}
+            </label>
             <input
+              id={`value-${i}`}
               className={isDupe ? "dupe-input" : undefined}
-              placeholder={row.kind === "address" ? "G… recipient address" : "Split id"}
+              placeholder={row.kind === "address" ? t("placeholderAddress") : t("placeholderSplit")}
               value={row.value}
               onChange={(e) => setRow(i, { value: e.target.value })}
+              aria-label={`${row.kind === "address" ? "Address" : "Split ID"} for row ${i + 1}`}
             />
             {isDupe && (
               <span
                 className="dupe-warn"
-                title="This address is already listed as a recipient."
+                title={t("duplicateAddressHint")}
                 aria-label="Duplicate recipient"
               >
                 ⚠
               </span>
             )}
+            <label htmlFor={`percent-${i}`} className="visually-hidden">
+              Percentage
+            </label>
             <input
+              id={`percent-${i}`}
               className="pct"
               type="number"
-              aria-label={`Recipient ${i + 1} share percentage`}
               min="0"
               max="100"
               value={row.percent}
               onChange={(e) => setRow(i, { percent: e.target.value })}
+              aria-label={`Recipient ${i + 1} share percentage`}
             />
-            <span className="unit">%</span>
+            <span
+              className="unit"
+              title="Percentage of the total payment this recipient receives. Stored on-chain as basis points (1% = 100 basis points)."
+            >
+              % ⓘ
+            </span>
             {rows.length > 1 && (
               <button
                 className="ghost"
@@ -150,19 +205,32 @@ export default function RecipientEditor({
             onChange([...rows, { kind: "address", value: "", percent: "" }])
           }
         >
-          Add recipient
+          {t("addRecipient")}
         </button>
+        <button className="ghost small" onClick={() => fileRef.current?.click()}>
+          {t("importCsv")}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".csv"
+          onChange={handleCsvFile}
+          className="csv-input"
+        />
         <span className={Math.abs(total - 100) < 0.001 ? "total ok" : "total"}>
-          {Number(total.toFixed(2))}% of 100%
+          {Number(total.toFixed(2))}% {t("ofTotal")}
         </span>
       </div>
+      {isInvalidTotal && (
+        <p className="note share-warn" role="alert">
+          ⚠ {t("sharesTotalWarn", { total: totalBps.toLocaleString() })}
+        </p>
+      )}
       {dupes.size > 0 && (
         <p className="note dupe-note">
-          ⚠ Duplicate recipient{dupes.size > 1 ? "s" : ""}: the same address
-          appears more than once.
+          ⚠ {t("duplicateRecipientNote", { count: dupes.size })}
         </p>
       )}
     </>
   );
 }
-

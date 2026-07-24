@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { EXPLORER, recipientLabel, SplitView } from "../lib/tributary";
+import {
+  recipientLabel,
+  SplitView,
+  EXPLORER,
+} from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import { CopyButton } from "./CopyButton";
 import { ShareButton } from "./ShareButton";
