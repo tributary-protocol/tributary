@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { walletClient } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import RecipientEditor, {
@@ -7,6 +7,7 @@ import RecipientEditor, {
   toRecipient,
   toShares,
 } from "./RecipientEditor";
+import FeeHint from "./FeeHint";
 
 export default function CreateSplit({
   wallet,
@@ -33,6 +34,17 @@ export default function CreateSplit({
       })),
     );
   }
+
+  const assembleFee = useMemo(() => {
+    if (!wallet || rowsError(rows, t)) return null;
+    return () =>
+      walletClient(wallet).create_split({
+        creator: wallet,
+        recipients: rows.map(toRecipient),
+        shares: toShares(rows),
+        controller: editable ? wallet : undefined,
+      });
+  }, [wallet, rows, editable]);
 
   const templates: [string, number[]][] = [
     ["50/50", [50, 50]],
@@ -101,6 +113,7 @@ export default function CreateSplit({
       <p className="hint" title="When a payment cannot be divided evenly, the tiny remainder (dust) goes to the last recipient so the full amount always lands somewhere.">
         ⓘ Rounding dust goes to the last recipient.
       </p>
+      <FeeHint assemble={assembleFee} />
       <button disabled={busy} onClick={submit}>
         {busy && <span className="btn-spinner" />}
         {busy ? t("waitingForSignature") : t("createButton")}

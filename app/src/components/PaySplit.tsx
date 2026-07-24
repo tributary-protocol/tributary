@@ -41,7 +41,6 @@ export default function PaySplit({
   const trustlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selected = splits.find((s) => String(s.id) === splitId);
-
   useEffect(() => {
     if (selectedSplitId !== undefined) {
       setSplitId(selectedSplitId);
@@ -57,7 +56,7 @@ export default function PaySplit({
       return;
     }
     try {
-      const stroops = toStroops(amount);
+      const stroops = toStroops(amount, token.decimals);
       previewPayout(BigInt(splitId), stroops).then((parts) => {
         if (active) setPreview(parts);
       });
@@ -70,7 +69,7 @@ export default function PaySplit({
     return () => {
       active = false;
     };
-  }, [splitId, amount]);
+  }, [splitId, amount, token.decimals]);
 
   // Trustline check — debounced 400 ms, fired when split or token changes
   useEffect(() => {
@@ -123,7 +122,7 @@ export default function PaySplit({
         from: wallet,
         id: BigInt(splitId),
         token: token.contract,
-        amount: toStroops(amount),
+        amount: toStroops(amount, token.decimals),
       });
       const { result } = await tx.signAndSend();
       setMessage(
@@ -138,12 +137,12 @@ export default function PaySplit({
       setBusy(false);
     }
   }
-
   return (
     <section className="card">
       <h2>{t("payTitle")}</h2>
       <div className="row">
-        <select value={splitId} onChange={(e) => setSplitId(e.target.value)}>
+        <label htmlFor="split-select" className="visually-hidden">{t("chooseSplit")}</label>
+        <select id="split-select" value={splitId} onChange={(e) => setSplitId(e.target.value)}>
           <option value="">{t("chooseSplit")}</option>
           {splits.map((s) => (
             <option key={String(s.id)} value={String(s.id)}>
@@ -153,10 +152,12 @@ export default function PaySplit({
         </select>
       </div>
       <div className="row">
+        <label htmlFor="amount-input" className="visually-hidden">{t("amount")}</label>
         <input
+          id="amount-input"
           type="number"
           min="0"
-          step="0.0000001"
+          step={1 / 10 ** token.decimals}
           placeholder={t("amount")}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
@@ -167,19 +168,15 @@ export default function PaySplit({
       {selected && preview.length === selected.recipients.length && (
         <div className="preview">
           <div className="preview-heading">
-            <span>Payout preview</span>
-            <Tooltip label="dust">
-              Dust is the tiny remainder left when a payment cannot be divided
-              exactly. It goes to the last recipient so no funds are left
-              behind.
-            </Tooltip>
+            <span>{t("payoutPreview")}</span>
+            <Tooltip label="dust">{t("dustExplainer")}</Tooltip>
           </div>
           <ul>
             {selected.recipients.map((r, i) => (
               <li key={i}>
                 <span>{recipientLabel(r)}</span>
                 <span>
-                  {fromStroops(preview[i])} {token.code}
+                  {fromStroops(preview[i], token.decimals)} {token.code}
                 </span>
               </li>
             ))}

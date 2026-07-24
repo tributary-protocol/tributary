@@ -8,7 +8,7 @@
   --panel: #111a2c;
   --line: #1f2c45;
   --text: #e8eefb;
-  --muted: #8fa3c4;
+  --muted: #b8c5d9;
   --accent: #4cc3ff;
   --accent-ink: #06121f;
 }
@@ -408,7 +408,8 @@ button.tooltip-trigger:focus-visible {
   line-height: 1;
 }
 
-.dupe-note {
+.dupe-note,
+.share-warn {
   color: #d97706;
   border: 1px solid rgba(217, 119, 6, 0.35);
   background: rgba(217, 119, 6, 0.07);
@@ -431,6 +432,10 @@ button.small {
 
 .templates {
   flex-wrap: wrap;
+}
+
+.csv-input {
+  display: none;
 }
 
 .check {
@@ -607,6 +612,76 @@ h2 {
   padding: 2px 0;
 }
 
+.split-tree {
+  margin-top: 8px;
+}
+
+.tree-node {
+  margin-bottom: 2px;
+}
+
+.tree-node-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.tree-toggle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: color 0.15s ease;
+}
+
+.tree-toggle:hover {
+  color: var(--text);
+}
+
+.tree-toggle:focus {
+  outline: none;
+  color: var(--accent);
+}
+
+.tree-spacer {
+  width: 16px;
+  display: inline-block;
+}
+
+.tree-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.tree-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.tree-link:hover {
+  text-decoration: underline;
+}
+
+.tree-split-link {
+  color: var(--accent);
+}
+
+.tree-share {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .mono {
   font-family: ui-monospace, Consolas, monospace;
   overflow-wrap: anywhere;
@@ -742,6 +817,18 @@ select.lang-select:focus {
   }
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 @media (max-width: 640px){
   .page { padding: 0 16px 48px; }
   .intro h1 { font-size: 28px; }
@@ -809,6 +896,91 @@ select.lang-select:focus {
   display: block;
   margin-bottom: 4px;
   color: var(--accent);
+}
+
+/* ── RefreshError ────────────────────────────────────────────── */
+
+.refresh-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: #1a1e2e;
+  border: 1px solid #3a4a70;
+  border-radius: 9px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.refresh-error-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+}
+
+.refresh-error-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.refresh-error-text {
+  flex: 1;
+}
+
+.refresh-error-message {
+  margin: 0;
+  color: var(--text);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.refresh-error-hint {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.refresh-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.refresh-error-retry {
+  padding: 6px 12px;
+  font-size: 12px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.refresh-error-retry:hover {
+  filter: brightness(1.08);
+}
+
+.refresh-error-dismiss {
+  padding: 4px 8px;
+  font-size: 14px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.refresh-error-dismiss:hover {
+  color: var(--text);
+  border-color: var(--muted);
 }
 
 /* ── ShareButton ──────────────────────────────────────────────── */
