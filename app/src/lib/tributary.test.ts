@@ -1,3 +1,12 @@
+import { describe, it, expect } from "vitest";
+import {
+  toStroops,
+  fromStroops,
+  formatAmount,
+  shortAddress,
+  recipientLabel,
+  ConversionError,
+} from "./tributary";
 import { describe, expect, it } from "vitest";
 import {
   ConversionError,
@@ -287,5 +296,38 @@ describe("Token conversion functions", () => {
       const back = fromStroops(stroops, 7);
       expect(back).toBe("100.5");
     });
+  });
+});
+
+describe("formatAmount", () => {
+  it("formats valid decimal string with commas", () => {
+    expect(formatAmount("1000")).toBe("1,000");
+  });
+
+  it("returns input string if non-numeric", () => {
+    expect(formatAmount("abc")).toBe("abc");
+  });
+});
+
+describe("shortAddress", () => {
+  it("shortens stellar address", () => {
+    expect(
+      shortAddress("GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFXYFTRE65OTHVRWPAHV7")
+    ).toBe("GBRP…AHV7");
+  });
+});
+
+describe("recipientLabel", () => {
+  it("formats account recipient", () => {
+    expect(
+      recipientLabel({
+        tag: "Account",
+        values: ["GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFXYFTRE65OTHVRWPAHV7"],
+      })
+    ).toBe("GBRP…AHV7");
+  });
+
+  it("formats split recipient", () => {
+    expect(recipientLabel({ tag: "Split", values: [42n] })).toBe("split #42");
   });
 });
