@@ -1,0 +1,20 @@
+{
+  "name": "tributary-embeddable-button",
+  "private": true,
+  "version": "0.1.0",
+  "description": "An embeddable donation widget for Tributary splits",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@stellar/freighter-api": "^6.0.1",
+    "tributary-sdk": "file:../../sdk"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
+  }
+}

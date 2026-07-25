@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type Language = "en" | "vi" | "it" | "tr";
+export type Language = "en" | "vi" | "it" | "tr" | "ru" | "ja";
 
 export const LANGUAGE_STORAGE_KEY = "tributary-lang";
 
@@ -10,7 +10,7 @@ export function readSavedLanguage(): Language {
   }
 
   const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return saved === "vi" || saved === "it" || saved === "tr" || saved === "en" ? saved : "en";
+  return saved === "vi" || saved === "it" || saved === "tr" || saved === "ru" || saved === "ja" || saved === "en" ? saved : "en";
 }
 
 export function persistLanguage(lang: Language) {
@@ -45,6 +45,7 @@ const translations = {
     contractRejectedSplit: "Contract rejected the split.",
     // RecipientEditor
     sharesTotalError: "Shares must add up to 100%.",
+    sharesTotalWarn: "Total shares must equal 10,000 bps (100%). Currently {total} bps.",
     sharesGreaterZeroError: "Shares must be greater than zero.",
     recipientRequiredError: "Every recipient needs an address or split id.",
     recipientFormatError: "Recipient addresses must be G… account keys.",
@@ -55,6 +56,10 @@ const translations = {
     addRecipient: "Add recipient",
     importCsv: "Import CSV",
     pctOfTotal: "{pct}% of 100%",
+    useBasisPoints: "Use basis points",
+    bpsOfTotal: "{bps} of 10,000 bps",
+    unitBpsTitle: "Basis points (100 bps = 1%)",
+    unitPctTitle: "Percentage of the total payment. Stored on-chain as basis points.",
     // PaySplit
     payTitle: "Pay through a split",
     chooseSplit: "Choose split",
@@ -156,6 +161,7 @@ const translations = {
     contractRejectedSplit: "Hợp đồng đã từ chối danh sách chia.",
     // RecipientEditor
     sharesTotalError: "Tổng tỷ lệ chia phải bằng 100%.",
+    sharesTotalWarn: "Tổng tỷ lệ chia phải bằng 10,000 bps (100%). Hiện tại: {total} bps.",
     sharesGreaterZeroError: "Tỷ lệ chia phải lớn hơn không.",
     recipientRequiredError: "Mỗi người nhận cần có một địa chỉ hoặc mã danh sách chia.",
     recipientFormatError: "Địa chỉ người nhận phải là khóa tài khoản bắt đầu bằng G….",
@@ -166,6 +172,10 @@ const translations = {
     addRecipient: "Thêm người nhận",
     importCsv: "Nhập CSV",
     pctOfTotal: "{pct}% của 100%",
+    useBasisPoints: "Sử dụng điểm cơ bản (bps)",
+    bpsOfTotal: "{bps} của 10.000 bps",
+    unitBpsTitle: "Điểm cơ bản (100 bps = 1%)",
+    unitPctTitle: "Phần trăm của tổng thanh toán. Lưu trên chuỗi dưới dạng điểm cơ bản.",
     // PaySplit
     payTitle: "Thanh toán qua danh sách chia",
     chooseSplit: "Chọn danh sách chia",
@@ -365,6 +375,7 @@ const translations = {
     contractRejectedSplit: "Il contratto ha rifiutato la divisione.",
     // RecipientEditor
     sharesTotalError: "Le quote devono sommare al 100%.",
+    sharesTotalWarn: "Le quote totali devono essere 10.000 bps (100%). Attualmente {total} bps.",
     sharesGreaterZeroError: "Le quote devono essere maggiori di zero.",
     recipientRequiredError: "Ogni destinatario ha bisogno di un indirizzo o di un id di divisione.",
     recipientFormatError: "Gli indirizzi dei destinatari devono essere chiavi di account G….",
@@ -468,6 +479,7 @@ const translations = {
     contractRejectedSplit: "Sözleşme bölmeyi reddetti.",
     // RecipientEditor
     sharesTotalError: "Payların toplamı %100 olmalıdır.",
+    sharesTotalWarn: "Toplam paylar 10.000 bps (%100) olmalıdır. Şu anki: {total} bps.",
     sharesGreaterZeroError: "Paylar sıfırdan büyük olmalıdır.",
     recipientRequiredError: "Her alıcının bir adresi veya bölme kimliği olmalıdır.",
     recipientFormatError: "Alıcı adresleri G… ile başlayan hesap anahtarları olmalıdır.",
@@ -547,6 +559,117 @@ const translations = {
     activitySplitNum: "bölme #{id}",
     // Footer
     contractOnTestnet: "Sözleşme testnet üzerinde",
+  },
+  ja: {
+    // Header & Navigation
+    connectWallet: "Freighterを接続",
+    github: "GitHub",
+    testnet: "テストネット",
+    // Intro
+    introTitle: "Stellarでの決済分割",
+    introDesc: "1回のトランザクションで、すべての受取人にシェアに応じた支払いを実行。テストネットで動作中。",
+    // ActionPanel tabs
+    tabCreate: "作成",
+    tabPay: "支払い",
+    tabEscrow: "エスクロー",
+    tabManage: "管理",
+    // CreateSplit
+    createTitle: "分割ルールの作成",
+    createEditableLabel: "この分割ルールは後で編集可能（チェックを外すと永久にロックされます）",
+    createButton: "分割ルールを作成",
+    waitingForSignature: "署名を待機中…",
+    connectWalletFirst: "最初にウォレットを接続してください。",
+    splitCreated: "分割ルール #{id} が作成されました。",
+    contractRejectedSplit: "コントラクトが分割ルールを拒否しました。",
+    // RecipientEditor
+    sharesTotalError: "割合の合計は100%になる必要があります。",
+    sharesGreaterZeroError: "割合は0より大きい必要があります。",
+    recipientRequiredError: "受取人ごとにアドレスまたは分割IDが必要です。",
+    recipientFormatError: "受取人アドレスはG…で始まるアカウントキーである必要があります。",
+    kindAddress: "アドレス",
+    kindSplit: "分割",
+    placeholderAddress: "G… 受取人アドレス",
+    placeholderSplit: "分割ID",
+    addRecipient: "受取人を追加",
+    importCsv: "CSVインポート",
+    pctOfTotal: "100%中 {pct}%",
+    // PaySplit
+    payTitle: "分割ルール経由で支払い",
+    chooseSplit: "分割ルールを選択",
+    recipientsCount: "{count} 人の受取人",
+    amount: "金額",
+    paySuccess: "分割ルール #{id} 経由で {amount} {token} を支払いました。",
+    payFailed: "支払いに失敗しました。",
+    payButton: "支払う",
+    pickSplitAndAmount: "分割ルールと金額を選択してください。",
+    trustlineWarningTitle: "{token} での支払いができません",
+    trustlineWarningItem: "{address} には {token} のトラストラインがありません。この分割ルールで {token} 支払いを行う前にトラストラインを追加する必要があります。",
+    trustlineWarningHint: "すべての受取人がこのトークンを受け取れるようになるまで支払いはブロックされます。",
+    trustlineNoticeTitle: "トラストラインの確認結果が不確定です",
+    trustlineNoticeHint: "一部の受取人のトラストラインを確認できませんでした。トークンを受け取れない場合、支払いが失敗する可能性があります。",
+    // EscrowCard
+    escrowTitle: "エスクロー",
+    escrowDesc: "資金を分割ルールにプールし、後ですべての受取人に分配します。",
+    pending: "保留中: {amount} {token}",
+    depositButton: "預入",
+    distributeButton: "分配",
+    distributeSuccess: "すべての受取人に {amount} {token} を分配しました。",
+    distributeFailed: "分配する対象がありません。",
+    depositSuccess: "{amount} {token} を預入れました。",
+    depositFailed: "預入に失敗しました。",
+    pickSplit: "分割ルールを選択してください。",
+    working: "処理中…",
+    // ManageSplit
+    manageTitle: "分割ルールの管理",
+    chooseSplitControl: "あなたが管理する分割ルールを選択",
+    updateButton: "分割ルールを更新",
+    placeholderController: "G… 新しい管理者",
+    transferButton: "権限譲渡",
+    lockButton: "永久にロック",
+    confirmLockButton: "ロックを確認",
+    updateSuccess: "分割ルールを更新しました。",
+    updateFailed: "更新が拒否されました。",
+    transferSuccess: "管理者権限を譲渡しました。",
+    transferFailed: "権限譲渡が拒否されました。",
+    lockConfirmPrompt: "ロックは永久的です。確認のためもう一度押してください。",
+    lockSuccess: "分割ルールを永久にロックしました。",
+    lockFailed: "ロックが拒否されました。",
+    controllerFormatError: "管理者はG…で始まるアカウントキーである必要があります。",
+    // SplitList & Detail
+    loadingSplits: "分割ルールを読み込み中…",
+    noSplitsOnContract: "このコントラクトにはまだ分割ルールがありません。",
+    noSplitsPrompt: "テストネットでFreighterを接続し、「作成」タブを開いて最初の分割ルールを登録してください。テストネットのXLMはfriendbotから無料でもらえるため、費用はかかりません。",
+    recentSplits: "最近の分割ルール",
+    copy: "コピー",
+    yours: "あなたの所有",
+    mutable: "編集可能",
+    locked: "ロック済み",
+    nestedSplit: "分割 #{id}",
+    detailEscrow: "エスクロー",
+    detailController: "管理者: {controller}",
+    detailHistoryTitle: "支払い＆分配履歴",
+    detailHistoryEmpty: "まだ支払いや分配の履歴はありません。",
+    detailHistoryLoading: "履歴を読み込み中…",
+    // Activity
+    recentActivity: "最近のアクティビティ",
+    exportCsv: "CSVエクスポート",
+    activityCreated: "作成済み",
+    activityPaid: "支払い済み",
+    activityUpdated: "更新済み",
+    activityDeposit: "預入",
+    activityDistributed: "分配済み",
+    activityControlMoved: "権限変更済み",
+    activityTx: "tx",
+    activitySplitNum: "分割 #{id}",
+    // FeeHint
+    estimatedFee: "推定手数料",
+    estimatedDepositFee: "推定預入手数料",
+    estimatedDistributeFee: "推定分配手数料",
+    estimatedUpdateFee: "推定更新手数料",
+    estimatedTransferFee: "推定権限譲渡手数料",
+    estimatedLockFee: "推定ロック手数料",
+    // Footer
+    contractOnTestnet: "テストネット上のコントラクト",
   },
 };
 
