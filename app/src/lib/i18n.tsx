@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type Language = "en" | "vi" | "it" | "tr" | "ru" | "ja";
+export type Language = "en" | "vi" | "it" | "tr" | "ru" | "ja" | "fr";
 
 export const LANGUAGE_STORAGE_KEY = "tributary-lang";
 
@@ -10,7 +10,7 @@ export function readSavedLanguage(): Language {
   }
 
   const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return saved === "vi" || saved === "it" || saved === "tr" || saved === "ru" || saved === "ja" || saved === "en" ? saved : "en";
+  return saved === "vi" || saved === "it" || saved === "tr" || saved === "ru" || saved === "ja" || saved === "fr" || saved === "en" ? saved : "en";
 }
 
 export function persistLanguage(lang: Language) {
@@ -670,6 +670,122 @@ const translations = {
     estimatedLockFee: "推定ロック手数料",
     // Footer
     contractOnTestnet: "テストネット上のコントラクト",
+  },
+  fr: {
+    // Header & Navigation
+    connectWallet: "Connecter Freighter",
+    github: "GitHub",
+    testnet: "Testnet",
+    // Intro
+    introTitle: "Fractionner les paiements sur Stellar",
+    introDesc: "Une seule transaction, chaque destinataire reçoit sa part. Fonctionne sur le réseau de test.",
+    // ActionPanel tabs
+    tabCreate: "Créer",
+    tabPay: "Payer",
+    tabEscrow: "Séquestre",
+    tabManage: "Gérer",
+    // CreateSplit
+    createTitle: "Créer une répartition",
+    createEditableLabel: "Je peux modifier cette répartition plus tard (décocher pour verrouiller pour toujours)",
+    createButton: "Créer la répartition",
+    waitingForSignature: "En attente de signature…",
+    connectWalletFirst: "Connectez votre portefeuille d'abord.",
+    splitCreated: "Répartition #{id} créée.",
+    contractRejectedSplit: "Le contrat a rejeté la répartition.",
+    // RecipientEditor
+    sharesTotalError: "Les parts doivent faire un total de 100%.",
+    sharesTotalWarn: "Le total des parts doit égaler 10 000 bps (100%). Actuellement {total} bps.",
+    sharesGreaterZeroError: "Les parts doivent être supérieures à zéro.",
+    recipientRequiredError: "Chaque destinataire doit avoir une adresse ou un identifiant de répartition.",
+    recipientFormatError: "Les adresses des destinataires doivent être des clés de compte G….",
+    kindAddress: "Adresse",
+    kindSplit: "Répartition",
+    placeholderAddress: "Adresse destinataire G…",
+    placeholderSplit: "Id de répartition",
+    addRecipient: "Ajouter un destinataire",
+    importCsv: "Importer CSV",
+    pctOfTotal: "{pct}% de 100%",
+    useBasisPoints: "Utiliser des points de base (bps)",
+    bpsOfTotal: "{bps} sur 10 000 bps",
+    unitBpsTitle: "Points de base (100 bps = 1%)",
+    unitPctTitle: "Pourcentage du paiement total. Stocké sur la chaîne sous forme de points de base.",
+    // PaySplit
+    payTitle: "Payer via une répartition",
+    chooseSplit: "Choisir la répartition",
+    recipientsCount: "{count} destinataires",
+    amount: "Montant",
+    paySuccess: "{amount} {token} payés via la répartition #{id}.",
+    payFailed: "Échec du paiement.",
+    payButton: "Payer",
+    pickSplitAndAmount: "Choisissez une répartition et un montant.",
+    trustlineWarningTitle: "Impossible de payer en {token}",
+    trustlineWarningItem: "{address} n'a pas de ligne de confiance pour {token}. Il doit l'ajouter avant que cette répartition puisse être payée en {token}.",
+    trustlineWarningHint: "Le paiement est bloqué jusqu'à ce que tous les destinataires puissent recevoir ce jeton.",
+    trustlineNoticeTitle: "Vérification de ligne de confiance non concluante",
+    trustlineNoticeHint: "Impossible de vérifier les lignes de confiance pour certains destinataires. Le paiement peut échouer s'ils ne peuvent pas recevoir ce jeton.",
+    // EscrowCard
+    escrowTitle: "Séquestre",
+    escrowDesc: "Déposez des fonds dans une répartition maintenant, payez tout le monde plus tard.",
+    pending: "En attente: {amount} {token}",
+    depositButton: "Déposer",
+    distributeButton: "Distribuer",
+    distributeSuccess: "Distribué {amount} {token} à tous les destinataires.",
+    distributeFailed: "Rien à distribuer.",
+    depositSuccess: "Déposé {amount} {token}.",
+    depositFailed: "Échec du dépôt.",
+    pickSplit: "Choisissez une répartition.",
+    working: "En cours…",
+    // ManageSplit
+    manageTitle: "Gérer vos répartitions",
+    chooseSplitControl: "Choisir la répartition que vous contrôlez",
+    updateButton: "Mettre à jour la répartition",
+    placeholderController: "Nouveau contrôleur G…",
+    transferButton: "Transférer",
+    lockButton: "Verrouiller pour toujours",
+    confirmLockButton: "Confirmer le verrouillage",
+    updateSuccess: "Répartition mise à jour.",
+    updateFailed: "Mise à jour rejetée.",
+    transferSuccess: "Contrôle transféré.",
+    transferFailed: "Transfert rejeté.",
+    lockConfirmPrompt: "Le verrouillage est permanent. Appuyez à nouveau pour confirmer.",
+    lockSuccess: "Répartition verrouillée pour toujours.",
+    lockFailed: "Verrouillage rejeté.",
+    controllerFormatError: "Le contrôleur doit être une clé de compte G….",
+    // SplitList & Detail
+    loadingSplits: "Chargement des répartitions…",
+    noSplitsOnContract: "Aucune répartition sur ce contrat pour l'instant.",
+    noSplitsPrompt: "Connectez Freighter sur le testnet, ouvrez l'onglet Créer et enregistrez la première. Le XLM du testnet est gratuit via friendbot, cela ne coûte donc rien d'essayer.",
+    recentSplits: "Répartitions récentes",
+    copy: "Copier",
+    yours: "la vôtre",
+    mutable: "modifiable",
+    locked: "verrouillée",
+    nestedSplit: "répartition #{id}",
+    detailEscrow: "séquestre",
+    detailController: "contrôleur: {controller}",
+    detailHistoryTitle: "Historique des paiements & distributions",
+    detailHistoryEmpty: "Aucun paiement ou distribution pour l'instant.",
+    detailHistoryLoading: "Chargement de l'historique…",
+    // Activity
+    recentActivity: "Activité récente",
+    exportCsv: "Exporter CSV",
+    activityCreated: "créée",
+    activityPaid: "payée",
+    activityUpdated: "mise à jour",
+    activityDeposit: "dépôt",
+    activityDistributed: "distribuée",
+    activityControlMoved: "contrôle transféré",
+    activityTx: "tx",
+    activitySplitNum: "répartition #{id}",
+    // FeeHint
+    estimatedFee: "Frais estimés",
+    estimatedDepositFee: "Frais de dépôt estimés",
+    estimatedDistributeFee: "Frais de distribution estimés",
+    estimatedUpdateFee: "Frais de mise à jour estimés",
+    estimatedTransferFee: "Frais de transfert estimés",
+    estimatedLockFee: "Frais de verrouillage estimés",
+    // Footer
+    contractOnTestnet: "Contrat sur testnet",
   },
 };
 
