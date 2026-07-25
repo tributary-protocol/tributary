@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { rpc, scValToNative } from "@stellar/stellar-sdk";
 import { withRateLimitBackoff } from "./rpc-backoff.mjs";
 
@@ -31,20 +31,32 @@ if (!config.ok) {
 
 const { RPC_URL, CONTRACT_ID } = config.value;
 const OUT = process.env.OUT ?? "events.ndjson";
-const STATE = process.env.STATE ?? "state.json";
 const POLL_MS = Number(process.env.POLL_MS ?? 10_000);
 const BACKOFF_INITIAL_MS = Number(process.env.BACKOFF_INITIAL_MS ?? 1_000);
 const BACKOFF_MAX_MS = Number(process.env.BACKOFF_MAX_MS ?? 60_000);
 
 const server = new rpc.Server(RPC_URL);
 
-function loadCursor() {
-  if (!existsSync(STATE)) return null;
-  return JSON.parse(readFileSync(STATE, "utf8")).cursor ?? null;
+function stateFile() {
+  return process.env.STATE ?? "state.json";
 }
 
-function saveCursor(cursor) {
-  writeFileSync(STATE, JSON.stringify({ cursor }));
+export function loadCursor() {
+  const file = stateFile();
+  if (!existsSync(file)) return null;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")).cursor ?? null;
+  } catch {
+    console.warn(`[indexer] state file "${file}" is corrupt or empty; starting from default window`);
+    return null;
+  }
+}
+
+export function saveCursor(cursor) {
+  const file = stateFile();
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ cursor }));
+  renameSync(tmp, file);
 }
 
 function decode(ev) {
@@ -173,6 +185,8 @@ async function poll() {
   }
 }
 
-console.log(`indexing ${CONTRACT_ID} from ${RPC_URL} every ${POLL_MS}ms`);
-await poll();
-intervalId = setInterval(() => poll().catch((e) => console.error(e.message ?? e)), POLL_MS);
+if (import.meta.filename === process.argv[1]) {
+  console.log(`indexing ${CONTRACT_ID} from ${RPC_URL} every ${POLL_MS}ms`);
+  await poll();
+  intervalId = setInterval(() => poll().catch((e) => console.error(e.message ?? e)), POLL_MS);
+}
