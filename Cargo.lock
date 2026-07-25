@@ -1920,6 +1920,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "tributary-splitter-proofs"
+version = "0.1.0"
+
+[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

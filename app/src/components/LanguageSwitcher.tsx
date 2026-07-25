@@ -14,6 +14,8 @@ export default function LanguageSwitcher() {
       <option value="vi">VI</option>
       <option value="it">IT</option>
       <option value="tr">TR</option>
+      <option value="ru">RU</option>
+      <option value="ja">JA</option>
     </select>
   );
 }

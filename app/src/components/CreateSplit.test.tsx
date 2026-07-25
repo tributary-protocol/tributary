@@ -50,6 +50,17 @@ describe("CreateSplit share validation", () => {
     expect(total.className).toBe("total");
   });
 
+  it("shows an inline warning when shares do not sum to 10,000 bps", () => {
+    renderCreateSplit();
+
+    const firstShare = screen.getByLabelText("Recipient 1 share percentage");
+    fireEvent.change(firstShare, { target: { value: "90" } });
+
+    expect(
+      screen.getByText("⚠ Total shares must equal 10,000 bps (100%). Currently 13,000 bps."),
+    ).toBeTruthy();
+  });
+
   it("does not show the share-total error when shares sum to 100%", () => {
     renderCreateSplit();
 
@@ -58,6 +69,9 @@ describe("CreateSplit share validation", () => {
     fireEvent.click(screen.getByText("Create split"));
 
     expect(screen.queryByText("Shares must add up to 100%.")).toBeNull();
+    expect(
+      screen.queryByText(/Total shares must equal 10,000 bps/),
+    ).toBeNull();
     expect(walletClient).not.toHaveBeenCalled();
   });
 });
