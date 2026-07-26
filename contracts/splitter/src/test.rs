@@ -1923,3 +1923,45 @@ fn single_recipient_gets_full_amount() {
     assert_eq!(token_client.balance(&a), amount);
     assert_eq!(token_client.balance(&payer), 0);
 }
+
+#[test]
+fn create_split_extends_instance_ttl() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    let ttl = s
+        .env
+        .as_contract(&s.client.address, || s.env.storage().instance().get_ttl());
+
+    assert_eq!(ttl, TTL_EXTEND_TO - 1);
+}
+
+#[test]
+fn load_extends_split_persistent_ttl() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    s.client.get_split(&id);
+
+    let ttl = s.env.as_contract(&s.client.address, || {
+        s.env.storage().persistent().get_ttl(&DataKey::Split(id))
+    });
+
+    assert_eq!(ttl, TTL_EXTEND_TO - 1);
+}
