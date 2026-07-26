@@ -594,6 +594,10 @@ impl Splitter {
         load(&env, id)
     }
 
+    pub fn is_locked(env: Env, id: u64) -> Result<bool, Error> {
+        Ok(load(&env, id)?.controller.is_none())
+    }
+
     pub fn recipient_count(env: Env, id: u64) -> Result<u32, Error> {
         Ok(load(&env, id)?.recipients.len())
     }
