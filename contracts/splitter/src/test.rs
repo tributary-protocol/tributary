@@ -1923,3 +1923,28 @@ fn single_recipient_gets_full_amount() {
     assert_eq!(token_client.balance(&a), amount);
     assert_eq!(token_client.balance(&payer), 0);
 }
+
+#[test]
+fn is_locked_works() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+
+    let id_mutable = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+        &Some(controller.clone()),
+    );
+    assert_eq!(s.client.is_locked(&id_mutable), false);
+
+    let id_locked = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    assert_eq!(s.client.is_locked(&id_locked), true);
+}
