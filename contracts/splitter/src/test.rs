@@ -1923,3 +1923,46 @@ fn single_recipient_gets_full_amount() {
     assert_eq!(token_client.balance(&a), amount);
     assert_eq!(token_client.balance(&payer), 0);
 }
+
+#[test]
+fn distribute_uses_updated_table_after_update_split() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &Some(controller.clone()),
+    );
+
+    let token_id = s
+        .env
+        .register_stellar_asset_contract(Address::generate(&s.env));
+    let token_client = token::Client::new(&s.env, &token_id);
+    let token_admin = token::StellarAssetClient::new(&s.env, &token_id);
+    let payer = Address::generate(&s.env);
+    let amount = 10_000_000;
+    token_admin.mint(&payer, &amount);
+
+    // Update the routing table
+    s.client.update_split(
+        &id,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+    );
+
+    // Deposit
+    s.client.deposit(&payer, &id, &token_id, &amount);
+
+    // Distribute
+    s.client.distribute(&id, &token_id);
+
+    // Should pay by the NEW routing table
+    assert_eq!(token_client.balance(&a), amount / 2);
+    assert_eq!(token_client.balance(&b), amount / 2);
+    assert_eq!(token_client.balance(&payer), 0);
+}
