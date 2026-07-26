@@ -130,6 +130,32 @@ fn recipient_count_panics_on_missing_split() {
 }
 
 #[test]
+fn get_shares_returns_only_shares() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let c = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b), acct(&c)],
+        &vec![&s.env, 5_000, 3_000, 2_000],
+        &None,
+    );
+
+    let shares = s.client.get_shares(&id);
+    assert_eq!(shares, vec![&s.env, 5_000u32, 3_000u32, 2_000u32]);
+}
+
+#[test]
+fn get_shares_panics_on_missing_split() {
+    let s = setup();
+    let result = s.client.try_get_shares(&999_999u64);
+    assert_eq!(result, Err(Ok(Error::SplitNotFound)));
+}
+
+#[test]
 fn rejects_invalid_splits() {
     let s = setup();
     let creator = Address::generate(&s.env);
