@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type Language = "en" | "vi" | "it" | "tr" | "ru" | "ja";
+export type Language = "en" | "vi" | "it" | "tr" | "ru" | "ja" | "pt";
 
 export const LANGUAGE_STORAGE_KEY = "tributary-lang";
 
@@ -10,7 +10,7 @@ export function readSavedLanguage(): Language {
   }
 
   const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return saved === "vi" || saved === "it" || saved === "tr" || saved === "ru" || saved === "ja" || saved === "en" ? saved : "en";
+  return saved === "vi" || saved === "it" || saved === "tr" || saved === "ru" || saved === "ja" || saved === "pt" || saved === "en" ? saved : "en";
 }
 
 export function persistLanguage(lang: Language) {
@@ -670,6 +670,122 @@ const translations = {
     estimatedLockFee: "推定ロック手数料",
     // Footer
     contractOnTestnet: "テストネット上のコントラクト",
+  },
+  pt: {
+    // Header & Navigation
+    connectWallet: "Conectar Freighter",
+    github: "GitHub",
+    testnet: "Testnet",
+    // Intro
+    introTitle: "Divida pagamentos na Stellar",
+    introDesc: "Uma transação, cada destinatário pago pela sua parte. Rodando na testnet.",
+    // ActionPanel tabs
+    tabCreate: "Criar",
+    tabPay: "Pagar",
+    tabEscrow: "Custódia",
+    tabManage: "Gerenciar",
+    // CreateSplit
+    createTitle: "Criar uma divisão",
+    createEditableLabel: "Posso editar esta divisão mais tarde (desmarque para travá-la para sempre)",
+    createButton: "Criar divisão",
+    waitingForSignature: "Aguardando assinatura…",
+    connectWalletFirst: "Conecte sua carteira primeiro.",
+    splitCreated: "Divisão #{id} criada.",
+    contractRejectedSplit: "Contrato rejeitou a divisão.",
+    // RecipientEditor
+    sharesTotalError: "As partes devem somar 100%.",
+    sharesTotalWarn: "O total deve ser 10.000 bps (100%). Atualmente {total} bps.",
+    sharesGreaterZeroError: "As partes devem ser maiores que zero.",
+    recipientRequiredError: "Cada destinatário precisa de um endereço ou id de divisão.",
+    recipientFormatError: "Endereços devem ser chaves de conta G…",
+    kindAddress: "Endereço",
+    kindSplit: "Divisão",
+    placeholderAddress: "Endereço G… do destinatário",
+    placeholderSplit: "Id da divisão",
+    addRecipient: "Adicionar destinatário",
+    importCsv: "Importar CSV",
+    pctOfTotal: "{pct}% de 100%",
+    useBasisPoints: "Usar pontos base",
+    bpsOfTotal: "{bps} de 10.000 bps",
+    unitBpsTitle: "Pontos base (100 bps = 1%)",
+    unitPctTitle: "Porcentagem do total. Armazenado on-chain como pontos base.",
+    // PaySplit
+    payTitle: "Pagar através de uma divisão",
+    chooseSplit: "Escolher divisão",
+    recipientsCount: "{count} destinatários",
+    amount: "Quantia",
+    paySuccess: "Pago {amount} {token} através da divisão #{id}.",
+    payFailed: "Pagamento falhou.",
+    payButton: "Pagar",
+    pickSplitAndAmount: "Escolha uma divisão e uma quantia.",
+    trustlineWarningTitle: "Não é possível pagar em {token}",
+    trustlineWarningItem: "{address} não possui trustline de {token}. Eles devem adicioná-la antes que esta divisão possa ser paga em {token}.",
+    trustlineWarningHint: "O pagamento ficará bloqueado até que todos os destinatários possam receber este token.",
+    trustlineNoticeTitle: "Verificação de trustline inconclusiva",
+    trustlineNoticeHint: "Não foi possível verificar trustlines para alguns destinatários. O pagamento pode falhar se não puderem receber este token.",
+    // EscrowCard
+    escrowTitle: "Custódia",
+    escrowDesc: "Deposite fundos em uma divisão agora, pague a todos depois.",
+    pending: "Pendente: {amount} {token}",
+    depositButton: "Depositar",
+    distributeButton: "Distribuir",
+    distributeSuccess: "Distribuído {amount} {token} para todos os destinatários.",
+    distributeFailed: "Nada a distribuir.",
+    depositSuccess: "Depositado {amount} {token}.",
+    depositFailed: "Depósito falhou.",
+    pickSplit: "Escolha uma divisão.",
+    working: "Processando…",
+    // ManageSplit
+    manageTitle: "Gerencie suas divisões",
+    chooseSplitControl: "Escolha uma divisão que você controla",
+    updateButton: "Atualizar divisão",
+    placeholderController: "G… novo controlador",
+    transferButton: "Transferir",
+    lockButton: "Travar para sempre",
+    confirmLockButton: "Confirmar trava",
+    updateSuccess: "Divisão atualizada.",
+    updateFailed: "Atualização rejeitada.",
+    transferSuccess: "Controle transferido.",
+    transferFailed: "Transferência rejeitada.",
+    lockConfirmPrompt: "Travar é permanente. Pressione novamente para confirmar.",
+    lockSuccess: "Divisão travada para sempre.",
+    lockFailed: "Trava rejeitada.",
+    controllerFormatError: "O controlador deve ser uma chave de conta G….",
+    // SplitList & Detail
+    loadingSplits: "Carregando divisões…",
+    noSplitsOnContract: "Ainda não há divisões neste contrato.",
+    noSplitsPrompt: "Conecte o Freighter na testnet, abra a aba Criar e registre a primeira. XLM da testnet é gratuito, então não custa nada experimentar.",
+    recentSplits: "Divisões recentes",
+    copy: "Copiar",
+    yours: "sua",
+    mutable: "mutável",
+    locked: "travada",
+    nestedSplit: "divisão #{id}",
+    detailEscrow: "custódia",
+    detailController: "controlador: {controller}",
+    detailHistoryTitle: "Histórico de Pagamentos e Distribuições",
+    detailHistoryEmpty: "Nenhum pagamento ou distribuição ainda.",
+    detailHistoryLoading: "Carregando histórico…",
+    // Activity
+    recentActivity: "Atividade recente",
+    exportCsv: "Exportar CSV",
+    activityCreated: "criada",
+    activityPaid: "paga",
+    activityUpdated: "atualizada",
+    activityDeposit: "depósito",
+    activityDistributed: "distribuída",
+    activityControlMoved: "controle transferido",
+    activityTx: "tx",
+    activitySplitNum: "divisão #{id}",
+    // FeeHint
+    estimatedFee: "Taxa estimada",
+    estimatedDepositFee: "Taxa de depósito estimada",
+    estimatedDistributeFee: "Taxa de distribuição estimada",
+    estimatedUpdateFee: "Taxa de atualização estimada",
+    estimatedTransferFee: "Taxa de transferência estimada",
+    estimatedLockFee: "Taxa de trava estimada",
+    // Footer
+    contractOnTestnet: "Contrato na testnet",
   },
 };
 
