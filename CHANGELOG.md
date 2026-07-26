@@ -10,6 +10,7 @@
 - Mutable splits with `update_split`, `transfer_control` and permanent locking
 - `update_split` refuses to run while the split holds an escrow balance, so a controller can't redirect a deposit after the fact
 - Creator index (`splits_of`), 32 recipient cap, storage TTL management
+- Share math extracted into a pure `math` module and proven with Kani: conservation, dust correctness, payout accounting, exact-floor rounding and share-validation soundness are machine-checked over bounded input domains (see `docs/formal-verification.md`)
 
 ### App
 - Create, pay, escrow and manage splits against testnet with Freighter
