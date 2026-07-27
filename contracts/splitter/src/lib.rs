@@ -23,7 +23,6 @@ contractmeta!(
 );
 
 pub const MAX_CASCADE_DEPTH: u32 = 5;
-pub const MAX_DISTRIBUTE_TOKENS: u32 = 10;
 
 const DAY_LEDGERS: u32 = 17_280;
 const TTL_THRESHOLD: u32 = 30 * DAY_LEDGERS;
@@ -80,10 +79,6 @@ pub enum Error {
     SplitHasBalance = 12,
     /// Code 13. The cascade depth exceeds the maximum allowed limit.
     MaxDepthExceeded = 13,
-    /// Code 14. The number of tokens to distribute exceeds the allowed limit.
-    TooManyTokens = 14,
-    /// Code 15. No pending control transfer exists for this split.
-    NoPendingTransfer = 15,
 }
 
 #[contracttype]
@@ -524,48 +519,6 @@ impl Splitter {
             return Err(Error::MaxDepthExceeded);
         }
         distribute_recursive(&env, id, &token, 0, max_depth)
-    }
-
-    /// Pays out all escrowed tokens for a split, up to `MAX_DISTRIBUTE_TOKENS` (10).
-    /// Returns the list of tokens and their distributed amounts.
-    /// If no tokens are specified, retrieves all tokens that currently have balances.
-    /// Zero-balance tokens are skipped and do not cause errors.
-    pub fn distribute_all_tokens(
-        env: Env,
-        id: u64,
-        tokens: Option<Vec<Address>>,
-    ) -> Result<Vec<TokenDistribution>, Error> {
-        let _split = load(&env, id)?;
-        let tokens_to_process = match tokens {
-            Some(t) => t,
-            None => Self::held_tokens(env.clone(), id),
-        };
-        if tokens_to_process.len() > MAX_DISTRIBUTE_TOKENS {
-            return Err(Error::TooManyTokens);
-        }
-        let mut distributions = Vec::new(&env);
-        for token in tokens_to_process.iter() {
-            let bal = Self::balance(env.clone(), id, token.clone());
-            if bal <= 0 {
-                continue;
-            }
-            let (node_split, amount) = distribute_node(&env, id, &token)?;
-            payout(
-                &env,
-                &node_split,
-                &env.current_contract_address(),
-                &token,
-                amount,
-            );
-            Distributed {
-                id,
-                token: token.clone(),
-                amount,
-            }
-            .publish(&env);
-            distributions.push_back(TokenDistribution { token, amount });
-        }
-        Ok(distributions)
     }
 
     /// Returns the exact per-recipient amounts a payment of `amount` would
