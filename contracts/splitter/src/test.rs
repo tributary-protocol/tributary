@@ -1390,6 +1390,36 @@ fn close_split_rejects_immutable_split() {
 }
 
 #[test]
+fn balance_ttl_is_extended_on_write_and_read() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, _) = fund_token(&s.env, &payer, 1_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    // Deposit funds - this calls credit() which should extend TTL on write
+    s.client.deposit(&payer, &id, &token_id, &400);
+
+    // Check balance - this should extend TTL on read
+    let bal = s.client.balance(&id, &token_id);
+    assert_eq!(bal, 400);
+
+    // Distribute - this should extend TTL on read before removal
+    let distributed = s.client.distribute(&id, &token_id);
+    assert_eq!(distributed, 400);
+
+    // Balance should now be zero
+    assert_eq!(s.client.balance(&id, &token_id), 0);
+}
+
+#[test]
 fn distribute_cascade_basic() {
     let s = setup();
     let creator = Address::generate(&s.env);

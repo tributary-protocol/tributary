@@ -580,10 +580,14 @@ impl Splitter {
 
     #[must_use]
     pub fn balance(env: Env, id: u64, token: Address) -> i128 {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Balance(id, token))
-            .unwrap_or(0)
+        let key = DataKey::Balance(id, token.clone());
+        let amount: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        if amount > 0 {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        }
+        amount
     }
 
     pub fn has_split(env: Env, id: u64) -> bool {
@@ -740,6 +744,9 @@ fn credit(env: &Env, id: u64, token: &Address, amount: i128) {
     let key = DataKey::Balance(id, token.clone());
     let held: i128 = env.storage().persistent().get(&key).unwrap_or(0);
     env.storage().persistent().set(&key, &(held + amount));
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
     let tokens_key = DataKey::HeldTokens(id);
     let mut tokens: Vec<Address> = env
