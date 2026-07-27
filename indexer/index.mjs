@@ -109,7 +109,7 @@ function saveCursor(cursor) {
 
 let isPolling = false;
 let shutdownRequested = false;
-let intervalId;
+let pollingTimerId;
 let backoffTimeoutId;
 let resumeBackoff;
 let pendingStartLedger;
@@ -142,8 +142,9 @@ function rpcCall(operation) {
 function handleShutdown(signal) {
   log("info", `Received ${signal}. Shutting down gracefully...`, { signal });
   shutdownRequested = true;
-  if (intervalId) {
-    clearInterval(intervalId);
+  if (pollingTimerId) {
+    clearTimeout(pollingTimerId);
+    pollingTimerId = undefined;
   }
   if (backoffTimeoutId) {
     clearTimeout(backoffTimeoutId);
@@ -242,6 +243,27 @@ async function poll() {
   }
 }
 
+export async function runPollingLoop({
+  pollFn = poll,
+  pollMs = POLL_MS,
+  schedule = (callback, delay) => setTimeout(callback, delay),
+  logger = (message) => console.error(message),
+} = {}) {
+  try {
+    await pollFn();
+  } catch (error) {
+    logger(error?.message ?? error);
+  }
+
+  if (shutdownRequested) {
+    return;
+  }
+
+  pollingTimerId = schedule(() => {
+    void runPollingLoop({ pollFn, pollMs, schedule, logger });
+  }, pollMs);
+}
+
 const isMain =
   process.argv[1] &&
   resolve(process.argv[1]).toLowerCase() ===
@@ -249,7 +271,15 @@ const isMain =
 
 let log = () => {};
 let metricsTracker = createMetricsTracker();
-let RPC_URL, CONTRACT_ID, LOG_LEVEL, OUT, STATE, POLL_MS, BACKOFF_INITIAL_MS, BACKOFF_MAX_MS, server;
+let RPC_URL,
+  CONTRACT_ID,
+  LOG_LEVEL,
+  OUT,
+  STATE,
+  POLL_MS,
+  BACKOFF_INITIAL_MS,
+  BACKOFF_MAX_MS,
+  server;
 
 if (isMain) {
   const config = validateConfig();
@@ -311,16 +341,13 @@ if (isMain) {
     logLevel: LOG_LEVEL,
   });
 
-  await poll();
-  intervalId = setInterval(
-    () =>
-      poll().catch((e) => {
-        const metrics = metricsTracker.recordError();
-        log("error", "Unhandled error in poll interval", {
-          error: e?.message ?? String(e),
-          errorsTotal: metrics.errorsTotal,
-        });
-      }),
-    POLL_MS
-  );
+  void runPollingLoop({
+    logger: (message) => {
+      const metrics = metricsTracker.recordError();
+      log("error", "Unhandled error in polling loop", {
+        error: String(message),
+        errorsTotal: metrics.errorsTotal,
+      });
+    },
+  });
 }

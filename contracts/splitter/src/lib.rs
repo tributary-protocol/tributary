@@ -134,6 +134,7 @@ enum DataKey {
     /// The value is an `Address` representing the proposed new controller. Stored in
     /// persistent storage keyed by split ID. Removed after transfer is accepted or cancelled.
     PendingController(u64),
+    AccountBalance(Address, Address),
 }
 
 #[contractevent]
@@ -619,6 +620,10 @@ impl Splitter {
         Ok(load(&env, id)?.recipients.len())
     }
 
+    pub fn get_shares(env: Env, id: u64) -> Result<Vec<u32>, Error> {
+        Ok(load(&env, id)?.shares)
+    }
+
     #[must_use]
     pub fn held_tokens(env: Env, id: u64) -> Vec<Address> {
         env.storage()
@@ -666,6 +671,19 @@ impl Splitter {
         env.storage()
             .persistent()
             .get(&DataKey::PendingController(id))
+    }
+
+    /// Claims any fallback balances credited to this account due to failed payouts.
+    pub fn claim(env: Env, account: Address, token: Address) -> Result<(), Error> {
+        let key = DataKey::AccountBalance(account.clone(), token.clone());
+        let held: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        if held == 0 {
+            return Err(Error::InvalidAmount);
+        }
+        env.storage().persistent().remove(&key);
+        let client = token::Client::new(&env, &token);
+        client.transfer(&env.current_contract_address(), &account, &held);
+        Ok(())
     }
 }
 
@@ -742,7 +760,15 @@ fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i12
             continue;
         }
         match split.recipients.get_unchecked(i) {
-            Recipient::Account(addr) => client.transfer(from, &addr, &part),
+            Recipient::Account(addr) => match client.try_transfer(from, &addr, &part) {
+                Ok(Ok(())) => {}
+                _ => {
+                    if from != &vault {
+                        client.transfer(from, &vault, &part);
+                    }
+                    credit_account(env, &addr, token, part);
+                }
+            },
             Recipient::Split(child) => {
                 if from != &vault {
                     client.transfer(from, &vault, &part);
@@ -751,6 +777,15 @@ fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i12
             }
         }
     }
+}
+
+fn credit_account(env: &Env, account: &Address, token: &Address, amount: i128) {
+    let key = DataKey::AccountBalance(account.clone(), token.clone());
+    let held: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+    env.storage().persistent().set(&key, &(held + amount));
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
 }
 
 fn credit(env: &Env, id: u64, token: &Address, amount: i128) {

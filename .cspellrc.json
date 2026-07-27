@@ -59,6 +59,7 @@
     "summarises",
     "keypair",
     "keypairs",
+    "reentrancy",
     "trustline",
     "trustlines",
     "behaviour",
