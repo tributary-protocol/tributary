@@ -2225,3 +2225,149 @@ fn splits_of_paged_lands_exactly_on_last_item() {
     let page = s.client.splits_of_paged(&creator, &2, &1);
     assert_eq!(page, vec![&s.env, id2]);
 }
+
+#[test]
+fn pay_many_multi_settles_several_splits_with_different_tokens() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_x, client_x) = fund_token(&s.env, &payer, 10_000);
+    let (token_y, client_y) = fund_token(&s.env, &payer, 10_000);
+
+    let first = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let second = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    s.client.pay_many_multi(
+        &payer,
+        &vec![&s.env, first, second],
+        &vec![&s.env, 1_000, 2_000],
+        &vec![&s.env, token_x.clone(), token_y.clone()],
+    );
+
+    // first split: all 1_000 of token_x goes to a
+    assert_eq!(client_x.balance(&a), 1_000);
+    // second split: 2_000 of token_y split 50/50
+    assert_eq!(client_y.balance(&a), 1_000);
+    assert_eq!(client_y.balance(&b), 1_000);
+    assert_eq!(client_x.balance(&payer), 9_000);
+    assert_eq!(client_y.balance(&payer), 8_000);
+}
+
+#[test]
+fn pay_many_multi_failing_entry_reverts_whole_batch() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_x, client_x) = fund_token(&s.env, &payer, 10_000);
+    let (token_y, client_y) = fund_token(&s.env, &payer, 10_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    let result = s.client.try_pay_many_multi(
+        &payer,
+        &vec![&s.env, id, 999],
+        &vec![&s.env, 1_000, 2_000],
+        &vec![&s.env, token_x.clone(), token_y.clone()],
+    );
+    assert_eq!(result, Err(Ok(Error::SplitNotFound)));
+    // No balances moved — batch fully reverted
+    assert_eq!(client_x.balance(&a), 0);
+    assert_eq!(client_x.balance(&payer), 10_000);
+    assert_eq!(client_y.balance(&payer), 10_000);
+}
+
+#[test]
+fn pay_many_multi_rejects_empty_ids() {
+    let s = setup();
+    let payer = Address::generate(&s.env);
+    let (_, _) = fund_token(&s.env, &payer, 1_000);
+
+    let result = s
+        .client
+        .try_pay_many_multi(&payer, &vec![&s.env], &vec![&s.env], &vec![&s.env]);
+    assert_eq!(result, Err(Ok(Error::NoRecipients)));
+}
+
+#[test]
+fn pay_many_multi_rejects_length_mismatch() {
+    let s = setup();
+    let payer = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let creator = Address::generate(&s.env);
+    let (token_id, _) = fund_token(&s.env, &payer, 1_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    // ids len != amounts len
+    let result = s.client.try_pay_many_multi(
+        &payer,
+        &vec![&s.env, id],
+        &vec![&s.env, 100, 200],
+        &vec![&s.env, token_id.clone()],
+    );
+    assert_eq!(result, Err(Ok(Error::LengthMismatch)));
+
+    // ids len != tokens len
+    let result = s.client.try_pay_many_multi(
+        &payer,
+        &vec![&s.env, id],
+        &vec![&s.env, 100],
+        &vec![&s.env, token_id.clone(), token_id],
+    );
+    assert_eq!(result, Err(Ok(Error::LengthMismatch)));
+}
+
+#[test]
+fn pay_many_multi_rejects_non_positive_amount() {
+    let s = setup();
+    let payer = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let creator = Address::generate(&s.env);
+    let (token_id, _) = fund_token(&s.env, &payer, 1_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    let zero = s.client.try_pay_many_multi(
+        &payer,
+        &vec![&s.env, id],
+        &vec![&s.env, 0],
+        &vec![&s.env, token_id.clone()],
+    );
+    assert_eq!(zero, Err(Ok(Error::InvalidAmount)));
+
+    let negative = s.client.try_pay_many_multi(
+        &payer,
+        &vec![&s.env, id],
+        &vec![&s.env, -5],
+        &vec![&s.env, token_id],
+    );
+    assert_eq!(negative, Err(Ok(Error::InvalidAmount)));
+}
