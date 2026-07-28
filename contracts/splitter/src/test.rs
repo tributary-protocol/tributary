@@ -2114,3 +2114,114 @@ fn splits_of_preserves_creation_order() {
     let splits = s.client.splits_of(&creator);
     assert_eq!(splits, vec![&s.env, id1, id2, id3]);
 }
+
+#[test]
+fn splits_of_paged_start_beyond_list_length() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    // start == len
+    let page = s.client.splits_of_paged(&creator, &3, &5);
+    assert_eq!(page, vec![&s.env]);
+
+    // start > len
+    let page = s.client.splits_of_paged(&creator, &10, &5);
+    assert_eq!(page, vec![&s.env]);
+}
+
+#[test]
+fn splits_of_paged_limit_zero() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    let page = s.client.splits_of_paged(&creator, &0, &0);
+    assert_eq!(page, vec![&s.env]);
+}
+
+#[test]
+fn splits_of_paged_runs_past_end() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    let _id0 = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let id1 = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let id2 = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    // start=1, limit=10 — only 2 items remain
+    let page = s.client.splits_of_paged(&creator, &1, &10);
+    assert_eq!(page, vec![&s.env, id1, id2]);
+}
+
+#[test]
+fn splits_of_paged_lands_exactly_on_last_item() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    let _id0 = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let _id1 = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let id2 = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    // start=2, limit=1 — exactly the last item
+    let page = s.client.splits_of_paged(&creator, &2, &1);
+    assert_eq!(page, vec![&s.env, id2]);
+}
