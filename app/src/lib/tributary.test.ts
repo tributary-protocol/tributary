@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromStroops, toStroops, ConversionError } from "./tributary";
+import { fromStroops, toStroops, ConversionError, formatAmount, shortAddress, recipientLabel } from "./tributary";
 
 describe("fromStroops", () => {
   it("formats small values with up to 7 decimal places", () => {
