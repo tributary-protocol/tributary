@@ -1938,7 +1938,7 @@ fn is_locked_works() {
         &vec![&s.env, 5_000, 5_000],
         &Some(controller.clone()),
     );
-    assert_eq!(s.client.is_locked(&id_mutable), false);
+    assert!(!s.client.is_locked(&id_mutable));
 
     let id_locked = s.client.create_split(
         &creator,
@@ -1946,5 +1946,5 @@ fn is_locked_works() {
         &vec![&s.env, 5_000, 5_000],
         &None,
     );
-    assert_eq!(s.client.is_locked(&id_locked), true);
+    assert!(s.client.is_locked(&id_locked));
 }
