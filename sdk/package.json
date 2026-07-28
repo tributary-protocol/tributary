@@ -28,11 +28,11 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test dist/*.test.js",
+    "test": "node --test dist/index.test.js",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "^16.0.1",
+    "@stellar/stellar-sdk": "^16.1.0",
     "buffer": "6.0.3"
   },
   "devDependencies": {

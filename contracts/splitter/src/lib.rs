@@ -9,8 +9,12 @@
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contractmeta, contracttype, token,
-    Address, Env, Vec, I256,
+    Address, Env, Vec,
 };
+
+pub mod math;
+
+pub use math::{MAX_RECIPIENTS, TOTAL_SHARES};
 
 contractmeta!(key = "name", val = "tributary-splitter");
 contractmeta!(
@@ -18,8 +22,8 @@ contractmeta!(
     val = "https://github.com/tributary-protocol/tributary"
 );
 
-pub const TOTAL_SHARES: u32 = 10_000;
-pub const MAX_RECIPIENTS: u32 = 32;
+pub const MAX_CASCADE_DEPTH: u32 = 5;
+pub const MAX_DISTRIBUTE_TOKENS: u32 = 10;
 
 const DAY_LEDGERS: u32 = 17_280;
 const TTL_THRESHOLD: u32 = 30 * DAY_LEDGERS;
@@ -69,9 +73,17 @@ pub enum Error {
     /// contract stores. Can only happen if a share exceeds `TOTAL_SHARES`, which
     /// `validate` forbids, but we surface it as a typed error rather than panic.
     ArithmeticOverflow = 11,
+    /// Code 12. Raised by `close_split` when the split still holds a
+    /// balance, and by `update_split` when the split holds a balance in any
+    /// token — the routing table cannot be changed out from under money that
+    /// was deposited against it. Call `distribute` first.
     SplitHasBalance = 12,
-    /// Calling `accept_control` on a split that has no pending transfer.
-    NoPendingTransfer = 13,
+    /// Code 13. The cascade depth exceeds the maximum allowed limit.
+    MaxDepthExceeded = 13,
+    /// Code 14. The number of tokens to distribute exceeds the allowed limit.
+    TooManyTokens = 14,
+    /// Code 15. No pending control transfer exists for this split.
+    NoPendingTransfer = 15,
 }
 
 #[contracttype]
@@ -90,14 +102,39 @@ pub struct Split {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TokenDistribution {
+    pub token: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the total number of splits created. Used as a counter for generating
+    /// new split IDs. Value is a `u64` stored in instance storage.
     Count,
+    /// Stores the split configuration for a given split ID. The value is a `Split`
+    /// struct containing recipients, shares, and controller. Stored in persistent
+    /// storage keyed by the split ID.
     Split(u64),
+    /// Stores the escrowed balance for a specific split and token. The value is an
+    /// `i128` representing the amount of the token held in escrow for that split.
+    /// Stored in persistent storage keyed by (split_id, token_address).
     Balance(u64, Address),
+    /// Stores the list of split IDs created by a specific address (creator). The value
+    /// is a `Vec<u64>` containing all split IDs created by that address. Stored in
+    /// persistent storage keyed by the creator's address.
     Created(Address),
+    /// Stores the list of tokens that have non-zero balances for a specific split.
+    /// The value is a `Vec<Address>` of token addresses. Used to efficiently track
+    /// which tokens need distribution. Stored in persistent storage keyed by split ID.
     HeldTokens(u64),
+    /// Stores the pending controller address during a two-step control transfer.
+    /// The value is an `Address` representing the proposed new controller. Stored in
+    /// persistent storage keyed by split ID. Removed after transfer is accepted or cancelled.
     PendingController(u64),
+    AccountBalance(Address, Address),
 }
 
 #[contractevent]
@@ -202,6 +239,9 @@ impl Splitter {
             .unwrap_or_else(|| Vec::new(&env));
         created.push_back(id);
         env.storage().persistent().set(&index_key, &created);
+        env.storage()
+            .persistent()
+            .extend_ttl(&index_key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
         SplitCreated { id, creator }.publish(&env);
         Ok(id)
@@ -301,6 +341,12 @@ impl Splitter {
     }
 
     /// Replaces the recipients and shares of a mutable split.
+    ///
+    /// Rejected while the split holds a balance in any token: a depositor
+    /// sees the routing table at deposit time, and letting the controller
+    /// swap it out before `distribute` runs would let them redirect money
+    /// that already arrived. Call `distribute` for every token in
+    /// `held_tokens` first.
     pub fn update_split(
         env: Env,
         id: u64,
@@ -310,6 +356,9 @@ impl Splitter {
         let mut split = load(&env, id)?;
         let controller = split.controller.clone().ok_or(Error::SplitImmutable)?;
         controller.require_auth();
+        if !Self::held_tokens(env.clone(), id).is_empty() {
+            return Err(Error::SplitHasBalance);
+        }
         validate(&env, id, &recipients, &shares)?;
         split.recipients = recipients;
         split.shares = shares;
@@ -432,6 +481,12 @@ impl Splitter {
     /// Credits the amount the vault's balance actually increased by rather
     /// than the requested `amount`, so fee-on-transfer tokens that deliver
     /// less than requested cannot over-credit the split.
+    ///
+    /// The routing table cannot be redirected out from under this deposit:
+    /// `update_split` refuses to run while the split holds a balance in any
+    /// token, so whoever controls the split must `distribute` first. This
+    /// only matters for mutable splits (`controller: Some(_)`) — immutable
+    /// splits have no routing table to change in the first place.
     pub fn deposit(
         env: Env,
         from: Address,
@@ -458,35 +513,7 @@ impl Splitter {
     /// Pays out everything credited to the split for the given token.
     /// Anyone can call this; the routing table decides where funds go.
     pub fn distribute(env: Env, id: u64, token: Address) -> Result<i128, Error> {
-        let split = load(&env, id)?;
-        let key = DataKey::Balance(id, token.clone());
-        let amount: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        if amount <= 0 {
-            return Err(Error::NothingToDistribute);
-        }
-        env.storage().persistent().remove(&key);
-
-        let tokens_key = DataKey::HeldTokens(id);
-        if let Some(mut tokens) = env
-            .storage()
-            .persistent()
-            .get::<_, Vec<Address>>(&tokens_key)
-        {
-            if let Some(idx) = tokens.first_index_of(&token) {
-                tokens.remove(idx);
-                if tokens.is_empty() {
-                    env.storage().persistent().remove(&tokens_key);
-                } else {
-                    env.storage().persistent().set(&tokens_key, &tokens);
-                    env.storage().persistent().extend_ttl(
-                        &tokens_key,
-                        TTL_THRESHOLD,
-                        TTL_EXTEND_TO,
-                    );
-                }
-            }
-        }
-
+        let (split, amount) = distribute_node(&env, id, &token)?;
         payout(
             &env,
             &split,
@@ -496,6 +523,67 @@ impl Splitter {
         );
         Distributed { id, token, amount }.publish(&env);
         Ok(amount)
+    }
+
+    /// Distributes a parent split and recursively distributes any freshly-credited
+    /// direct children (and their children, etc.) in one call, bounded by `max_depth`.
+    ///
+    /// Depth Bound & Gas:
+    /// - Each level of recursion increases the depth. A `max_depth` of 0 only distributes the parent.
+    /// - Each distribution load/writes to persistent storage and does token transfers.
+    /// - To prevent out-of-gas errors or stack overflow, `max_depth` must be limited to `MAX_CASCADE_DEPTH` (5).
+    pub fn distribute_cascade(
+        env: Env,
+        id: u64,
+        token: Address,
+        max_depth: u32,
+    ) -> Result<i128, Error> {
+        if max_depth > MAX_CASCADE_DEPTH {
+            return Err(Error::MaxDepthExceeded);
+        }
+        distribute_recursive(&env, id, &token, 0, max_depth)
+    }
+
+    /// Pays out all escrowed tokens for a split, up to `MAX_DISTRIBUTE_TOKENS` (10).
+    /// Returns the list of tokens and their distributed amounts.
+    /// If no tokens are specified, retrieves all tokens that currently have balances.
+    /// Zero-balance tokens are skipped and do not cause errors.
+    pub fn distribute_all_tokens(
+        env: Env,
+        id: u64,
+        tokens: Option<Vec<Address>>,
+    ) -> Result<Vec<TokenDistribution>, Error> {
+        let _split = load(&env, id)?;
+        let tokens_to_process = match tokens {
+            Some(t) => t,
+            None => Self::held_tokens(env.clone(), id),
+        };
+        if tokens_to_process.len() > MAX_DISTRIBUTE_TOKENS {
+            return Err(Error::TooManyTokens);
+        }
+        let mut distributions = Vec::new(&env);
+        for token in tokens_to_process.iter() {
+            let bal = Self::balance(env.clone(), id, token.clone());
+            if bal <= 0 {
+                continue;
+            }
+            let (node_split, amount) = distribute_node(&env, id, &token)?;
+            payout(
+                &env,
+                &node_split,
+                &env.current_contract_address(),
+                &token,
+                amount,
+            );
+            Distributed {
+                id,
+                token: token.clone(),
+                amount,
+            }
+            .publish(&env);
+            distributions.push_back(TokenDistribution { token, amount });
+        }
+        Ok(distributions)
     }
 
     /// Returns the exact per-recipient amounts a payment of `amount` would
@@ -510,14 +598,30 @@ impl Splitter {
 
     #[must_use]
     pub fn balance(env: Env, id: u64, token: Address) -> i128 {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Balance(id, token))
-            .unwrap_or(0)
+        let key = DataKey::Balance(id, token.clone());
+        let amount: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        if amount > 0 {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        }
+        amount
+    }
+
+    pub fn has_split(env: Env, id: u64) -> bool {
+        env.storage().persistent().has(&DataKey::Split(id))
     }
 
     pub fn get_split(env: Env, id: u64) -> Result<Split, Error> {
         load(&env, id)
+    }
+
+    pub fn recipient_count(env: Env, id: u64) -> Result<u32, Error> {
+        Ok(load(&env, id)?.recipients.len())
+    }
+
+    pub fn get_shares(env: Env, id: u64) -> Result<Vec<u32>, Error> {
+        Ok(load(&env, id)?.shares)
     }
 
     #[must_use]
@@ -530,19 +634,12 @@ impl Splitter {
 
     #[must_use]
     pub fn splits_of(env: Env, creator: Address) -> Vec<u64> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Created(creator))
-            .unwrap_or_else(|| Vec::new(&env))
+        load_created(&env, &creator)
     }
 
     #[must_use]
     pub fn splits_of_paged(env: Env, creator: Address, start: u32, limit: u32) -> Vec<u64> {
-        let all: Vec<u64> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Created(creator))
-            .unwrap_or_else(|| Vec::new(&env));
+        let all: Vec<u64> = load_created(&env, &creator);
         let len = all.len();
         if start >= len || limit == 0 {
             return Vec::new(&env);
@@ -560,11 +657,7 @@ impl Splitter {
 
     #[must_use]
     pub fn splits_of_count(env: Env, creator: Address) -> u32 {
-        let all: Vec<u64> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Created(creator))
-            .unwrap_or_else(|| Vec::new(&env));
+        let all: Vec<u64> = load_created(&env, &creator);
         all.len()
     }
 
@@ -578,6 +671,31 @@ impl Splitter {
         env.storage()
             .persistent()
             .get(&DataKey::PendingController(id))
+    }
+
+    /// Claims any fallback balances credited to this account due to failed payouts.
+    pub fn claim(env: Env, account: Address, token: Address) -> Result<(), Error> {
+        let key = DataKey::AccountBalance(account.clone(), token.clone());
+        let held: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        if held == 0 {
+            return Err(Error::InvalidAmount);
+        }
+        env.storage().persistent().remove(&key);
+        let client = token::Client::new(&env, &token);
+        client.transfer(&env.current_contract_address(), &account, &held);
+        Ok(())
+    }
+}
+
+fn load_created(env: &Env, creator: &Address) -> Vec<u64> {
+    let key = DataKey::Created(creator.clone());
+    if let Some(created) = env.storage().persistent().get(&key) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        created
+    } else {
+        Vec::new(env)
     }
 }
 
@@ -604,38 +722,27 @@ fn validate(
             }
         }
     }
-    let mut total: u32 = 0;
-    for share in shares.iter() {
-        if share == 0 {
-            return Err(Error::ZeroShare);
-        }
-        total = total.checked_add(share).ok_or(Error::BadShareTotal)?;
-    }
-    if total != TOTAL_SHARES {
-        return Err(Error::BadShareTotal);
-    }
-    Ok(())
+    // Share checks live in `math` so Kani can prove them over all inputs.
+    math::validate_shares(shares.iter()).map_err(|e| match e {
+        math::ShareError::NoRecipients => Error::NoRecipients,
+        math::ShareError::TooManyRecipients => Error::TooManyRecipients,
+        math::ShareError::ZeroShare => Error::ZeroShare,
+        math::ShareError::BadShareTotal => Error::BadShareTotal,
+    })
 }
 
 fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
     let mut out = Vec::new(env);
     let last = split.recipients.len() - 1;
     let mut assigned: i128 = 0;
-    let total = I256::from_i128(env, i128::from(TOTAL_SHARES));
     for i in 0..split.recipients.len() {
         let part = if i == last {
+            // Dust: whatever rounding left over goes to the last recipient,
+            // so the parts sum to `amount` exactly.
             amount - assigned
         } else {
-            // `amount * share` can overflow i128 for large token amounts
-            // (custom high-supply tokens) before the division brings it back
-            // into range. Compute the intermediate in 256-bit space so any
-            // valid i128 amount stays panic- and wrap-free.
-            let product = I256::from_i128(env, amount).mul(&I256::from_i128(
-                env,
-                i128::from(split.shares.get_unchecked(i)),
-            ));
-            let part_i256 = product.div(&total);
-            part_i256.to_i128().ok_or(Error::ArithmeticOverflow)?
+            math::split_part(amount, split.shares.get_unchecked(i))
+                .ok_or(Error::ArithmeticOverflow)?
         };
         out.push_back(part);
         assigned += part;
@@ -653,7 +760,15 @@ fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i12
             continue;
         }
         match split.recipients.get_unchecked(i) {
-            Recipient::Account(addr) => client.transfer(from, &addr, &part),
+            Recipient::Account(addr) => match client.try_transfer(from, &addr, &part) {
+                Ok(Ok(())) => {}
+                _ => {
+                    if from != &vault {
+                        client.transfer(from, &vault, &part);
+                    }
+                    credit_account(env, &addr, token, part);
+                }
+            },
             Recipient::Split(child) => {
                 if from != &vault {
                     client.transfer(from, &vault, &part);
@@ -664,10 +779,22 @@ fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i12
     }
 }
 
+fn credit_account(env: &Env, account: &Address, token: &Address, amount: i128) {
+    let key = DataKey::AccountBalance(account.clone(), token.clone());
+    let held: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+    env.storage().persistent().set(&key, &(held + amount));
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
 fn credit(env: &Env, id: u64, token: &Address, amount: i128) {
     let key = DataKey::Balance(id, token.clone());
     let held: i128 = env.storage().persistent().get(&key).unwrap_or(0);
     env.storage().persistent().set(&key, &(held + amount));
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
     let tokens_key = DataKey::HeldTokens(id);
     let mut tokens: Vec<Address> = env
@@ -702,6 +829,78 @@ fn load(env: &Env, id: u64) -> Result<Split, Error> {
         .persistent()
         .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
     Ok(split)
+}
+
+fn distribute_node(env: &Env, id: u64, token: &Address) -> Result<(Split, i128), Error> {
+    let split = load(env, id)?;
+    let key = DataKey::Balance(id, token.clone());
+    let amount: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+    if amount <= 0 {
+        return Err(Error::NothingToDistribute);
+    }
+    env.storage().persistent().remove(&key);
+
+    let tokens_key = DataKey::HeldTokens(id);
+    if let Some(mut tokens) = env
+        .storage()
+        .persistent()
+        .get::<_, Vec<Address>>(&tokens_key)
+    {
+        if let Some(idx) = tokens.first_index_of(token) {
+            tokens.remove(idx);
+            if tokens.is_empty() {
+                env.storage().persistent().remove(&tokens_key);
+            } else {
+                env.storage().persistent().set(&tokens_key, &tokens);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&tokens_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+            }
+        }
+    }
+    Ok((split, amount))
+}
+
+fn distribute_recursive(
+    env: &Env,
+    id: u64,
+    token: &Address,
+    current_depth: u32,
+    max_depth: u32,
+) -> Result<i128, Error> {
+    let (split, amount) = match distribute_node(env, id, token) {
+        Ok(res) => res,
+        Err(Error::NothingToDistribute) => {
+            if current_depth == 0 {
+                return Err(Error::NothingToDistribute);
+            } else {
+                return Ok(0);
+            }
+        }
+        Err(e) => return Err(e),
+    };
+
+    payout(env, &split, &env.current_contract_address(), token, amount);
+    Distributed {
+        id,
+        token: token.clone(),
+        amount,
+    }
+    .publish(env);
+
+    if current_depth < max_depth {
+        let parts = amounts(env, &split, amount).unwrap_or_else(|_| Vec::new(env));
+        for i in 0..split.recipients.len() {
+            let part = parts.get_unchecked(i);
+            if part > 0 {
+                if let Recipient::Split(child_id) = split.recipients.get_unchecked(i) {
+                    distribute_recursive(env, child_id, token, current_depth + 1, max_depth)?;
+                }
+            }
+        }
+    }
+
+    Ok(amount)
 }
 
 #[cfg(test)]

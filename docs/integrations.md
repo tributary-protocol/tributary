@@ -2,17 +2,98 @@
 
 Patterns for using splits from another contract or application. All examples use the TypeScript sdk; the same calls work from any Soroban client.
 
-## Marketplace fees
+## Marketplace fees — worked example
 
-Create one split per seller at onboarding: seller 93%, platform 5%, referrer 2%. On each sale, route the buyer's payment through it:
+A single payment can split funds between seller, platform, and referrer in one
+transaction. Create one split per seller at onboarding with the revenue shares,
+then route every sale through it.
+
+### Scenario
+
+An online marketplace charges 5% per sale and shares 2% with the person who
+referred the buyer. The seller keeps 93%. When a buyer pays 1 USDC for an item,
+the three parties receive:
+
+| Party | Share | Amount (stroops) |
+|---|---|---|
+| Seller | 93% | 9,300,000 |
+| Platform | 5% | 500,000 |
+| Referrer | 2% | 200,000 |
+| **Total** | **100%** | **10,000,000** |
+
+Rounding dust (if any) goes to the last recipient listed in the split, so
+conservation always holds.
+
+### Setting up the split
+
+One `create_split` call defines the recipients and their shares (basis points,
+where 1% = 100 basis points, and the three shares must sum to 10,000):
 
 ```ts
-await client.pay({ from: buyer, id: sellerSplit, token: USDC, amount });
+import { Client, networks } from "tributary-sdk";
+
+const client = new Client({
+  ...networks.testnet,
+  rpcUrl: "https://soroban-testnet.stellar.org",
+});
+
+const setup = await client.create_split({
+  creator: seller,
+  recipients: [
+    { tag: "Account", values: [seller] },
+    { tag: "Account", values: [platform] },
+    { tag: "Account", values: [referrer] },
+  ],
+  shares: [9_300, 500, 200],     // 93%, 5%, 2% = 10,000
+  controller: seller,             // seller may update split later
+});
+const { result } = await setup.signAndSend({ signTransaction });
+const splitId = result.unwrap();
 ```
 
-One transaction, three balances updated, nothing to reconcile later.
+All three recipients are plain `Account` addresses, so the payout routes in a
+single hop — no nested distribution needed.
 
-Settling a day of sales across many sellers batches the same way:
+### Settling a sale
+
+When a buyer purchases an item, one `pay` call distributes the full amount to
+all three recipients atomically:
+
+```ts
+await client.pay({
+  from: buyer,
+  id: splitId,
+  token: USDC,
+  amount: 10_000_000n,             // 1 USDC in stroops
+});
+```
+
+A single transaction, three balances updated, nothing to reconcile later. The
+buyer signs once and the contract handles the rest.
+
+### Preview before paying
+
+Use `preview_payout` to show the exact breakdown on a checkout screen before
+submitting the transaction:
+
+```ts
+const { result: preview } = await client.preview_payout({
+  id: splitId,
+  amount: 10_000_000n,
+});
+
+if (preview.isOk()) {
+  const [sellerCut, platformCut, referrerCut] = [...preview.unwrap()];
+  // sellerCut = 9,300,000, platformCut = 500,000, referrerCut = 200,000
+}
+```
+
+Because `preview_payout` mirrors `pay`'s rounding, the preview amounts always
+match the actual payout amounts.
+
+### Batch settling many sales
+
+Settle a day of sales across many sellers in one `pay_many` call:
 
 ```ts
 await client.pay_many({
@@ -23,9 +104,47 @@ await client.pay_many({
 });
 ```
 
+Each split routes to its own set of recipients according to that split's shares.
+The batch is one transaction against the contract, so either all payments
+succeed or none do.
+
 ## Team payroll pool
 
 Create a mutable split with your multisig as controller and each member as a recipient. Revenue sources `deposit` into it whenever money arrives. Once per month anyone calls `distribute`. Adjusting shares when the team changes is one `update_split` from the controller.
+
+### Transfer control, then lock the split
+
+Control transfers use a two-step handoff: the current controller proposes a new
+controller, and the proposed controller accepts. The new controller can then
+lock the split by transferring control to `undefined`, the TypeScript encoding
+of the contract's `None` value:
+
+```ts
+// The current controller proposes the handoff.
+const propose = await aliceClient.transfer_control({
+  id: payrollSplit,
+  new_controller: bob,
+});
+await propose.signAndSend({ signTransaction: signAsAlice });
+
+// The proposed controller accepts and becomes the current controller.
+const accept = await bobClient.accept_control({ id: payrollSplit });
+await accept.signAndSend({ signTransaction: signAsBob });
+
+// Only the current controller can lock the split.
+const lock = await bobClient.transfer_control({
+  id: payrollSplit,
+  new_controller: undefined,
+});
+await lock.signAndSend({ signTransaction: signAsBob });
+```
+
+Wait for each transaction to confirm before constructing the next one because
+each call depends on the controller state written by the previous call. The
+last call sets `controller` to `None` and is irreversible: no address can call
+`update_split`, `transfer_control`, or `close_split` afterward. Check the
+recipients and shares before locking; a mistaken configuration cannot be
+recovered by assigning a new controller.
 
 ## Referrer pools with nesting
 

@@ -13,10 +13,12 @@ type Tab = (typeof TABS)[number];
 export default function ActionPanel({
   wallet,
   splits,
+  selectedSplitId,
   onChanged,
 }: {
   wallet: string | null;
   splits: SplitView[];
+  selectedSplitId?: string;
   onChanged: () => void;
 }) {
   const { t } = useTranslation();
@@ -60,11 +62,27 @@ export default function ActionPanel({
             <CreateSplit wallet={wallet} onCreated={onChanged} />
           )}
           {active === "Pay" && (
-            <PaySplit wallet={wallet} splits={splits} onPaid={onChanged} />
+            <PaySplit
+              wallet={wallet}
+              splits={splits}
+              selectedSplitId={selectedSplitId}
+              onPaid={onChanged}
+            />
           )}
-          {active === "Escrow" && <EscrowCard wallet={wallet} splits={splits} />}
+          {active === "Escrow" && (
+            <EscrowCard
+              wallet={wallet}
+              splits={splits}
+              selectedSplitId={selectedSplitId}
+            />
+          )}
           {active === "Manage" && (
-            <ManageSplit wallet={wallet} splits={splits} onChanged={onChanged} />
+            <ManageSplit
+              wallet={wallet}
+              splits={splits}
+              selectedSplitId={selectedSplitId}
+              onChanged={onChanged}
+            />
           )}
         </motion.div>
       </AnimatePresence>
