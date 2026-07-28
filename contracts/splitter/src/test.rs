@@ -1941,9 +1941,9 @@ fn distribute_uses_updated_table_after_update_split() {
 
     let token_id = s
         .env
-        .register_stellar_asset_contract(Address::generate(&s.env));
-    let token_client = token::Client::new(&s.env, &token_id);
-    let token_admin = token::StellarAssetClient::new(&s.env, &token_id);
+        .register_stellar_asset_contract_v2(Address::generate(&s.env));
+    let token_client = token::Client::new(&s.env, &token_id.address());
+    let token_admin = token::StellarAssetClient::new(&s.env, &token_id.address());
     let payer = Address::generate(&s.env);
     let amount = 10_000_000;
     token_admin.mint(&payer, &amount);
