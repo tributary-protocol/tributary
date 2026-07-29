@@ -6,7 +6,6 @@ import {
   fromStroops,
   TOKENS,
   SplitView,
-  shortAddress,
 } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import TokenPicker from "./TokenPicker";

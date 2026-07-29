@@ -899,7 +899,7 @@ impl Splitter {
 
         let index_key = DataKey::StreamsOf(stream.funder.clone());
         if let Some(mut streams) = env.storage().persistent().get::<_, Vec<u64>>(&index_key) {
-            if let Some(idx) = streams.first_index_of(&id) {
+            if let Some(idx) = streams.first_index_of(id) {
                 streams.remove(idx);
                 if streams.is_empty() {
                     env.storage().persistent().remove(&index_key);
