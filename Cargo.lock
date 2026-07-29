@@ -1722,7 +1722,7 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "soroban-spec 26.1.0",
- "stellar-xdr 26.0.1",
+ "stellar-xdr 27.0.0",
 ]
 
 [[package]]
