@@ -6,8 +6,9 @@ import CreateSplit from "./CreateSplit";
 import PaySplit from "./PaySplit";
 import EscrowCard from "./EscrowCard";
 import ManageSplit from "./ManageSplit";
+import StreamsCard from "./StreamsCard";
 
-const TABS = ["Create", "Pay", "Escrow", "Manage"] as const;
+const TABS = ["Create", "Pay", "Escrow", "Streams", "Manage"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function ActionPanel({
@@ -39,7 +40,7 @@ export default function ActionPanel({
             className={active === tabItem ? "tab active" : "tab"}
             onClick={() => setTab(tabItem)}
           >
-            {t("tab" + tabItem)}
+            {t("tab" + tabItem) || tabItem}
             {active === tabItem && (
               <motion.span
                 className="tab-line"
@@ -75,6 +76,9 @@ export default function ActionPanel({
               splits={splits}
               selectedSplitId={selectedSplitId}
             />
+          )}
+          {active === "Streams" && (
+            <StreamsCard wallet={wallet} splits={splits} />
           )}
           {active === "Manage" && (
             <ManageSplit

@@ -34,6 +34,7 @@ const translations = {
     tabCreate: "Create",
     tabPay: "Pay",
     tabEscrow: "Escrow",
+    tabStreams: "Streams",
     tabManage: "Manage",
     // CreateSplit
     createTitle: "Create a split",

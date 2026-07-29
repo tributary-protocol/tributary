@@ -5,6 +5,7 @@
     clippy::used_underscore_binding
 )]
 extern crate alloc;
+mod budget;
 
 use super::*;
 use soroban_sdk::testutils::storage::Persistent;

@@ -49,6 +49,17 @@ jobs:
           header: contract-size
           path: contract-size.md
 
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - run: rustup update stable && rustup target add wasm32v1-none
+      - name: Generate benchmark costs
+        working-directory: contracts/splitter
+        run: cargo test benchmark_costs --profile release-with-debug -- --ignored --nocapture
+      - name: Check metrics
+        run: node scripts/check_metrics.js contracts/splitter/baseline.json contracts/splitter/costs.json
   coverage:
     runs-on: ubuntu-latest
     permissions:
