@@ -2371,3 +2371,322 @@ fn pay_many_multi_rejects_non_positive_amount() {
     );
     assert_eq!(negative, Err(Ok(Error::InvalidAmount)));
 }
+
+#[test]
+fn test_stream_lifecycle() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let funder = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    // Create split
+    let split_id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    // Fund token to funder
+    let (token_id, token_client) = fund_token(&s.env, &funder, 10_000);
+
+    // Start ledger time
+    s.env.ledger().set_timestamp(1000);
+
+    // 1. Create Stream
+    let stream_id = s.client.create_stream(
+        &funder,
+        &split_id,
+        &token_id,
+        &1_000,
+        &1000,
+        &2000,
+    );
+
+    assert_eq!(stream_id, 0);
+    assert_eq!(token_client.balance(&funder), 9_000);
+    assert_eq!(token_client.balance(&s.client.address), 1_000);
+
+    let stream = s.client.get_stream(&stream_id);
+    assert_eq!(stream.id, 0);
+    assert_eq!(stream.split_id, split_id);
+    assert_eq!(stream.funder, funder);
+    assert_eq!(stream.token, token_id);
+    assert_eq!(stream.amount, 1_000);
+    assert_eq!(stream.start_time, 1000);
+    assert_eq!(stream.end_time, 2000);
+    assert_eq!(stream.withdrawn, 0);
+
+    // streams_of index
+    let streams = s.client.streams_of(&funder);
+    assert_eq!(streams, vec![&s.env, stream_id]);
+
+    // Vested at now (start_time)
+    assert_eq!(s.client.vested_of(&stream_id), 0);
+
+    // Vested midway (1500) -> 50% vested -> 500 tokens
+    s.env.ledger().set_timestamp(1500);
+    assert_eq!(s.client.vested_of(&stream_id), 500);
+
+    // Withdraw vested midway
+    let withdrawn = s.client.withdraw_vested(&stream_id);
+    assert_eq!(withdrawn, 500);
+    assert_eq!(token_client.balance(&a), 250);
+    assert_eq!(token_client.balance(&b), 250);
+
+    let stream = s.client.get_stream(&stream_id);
+    assert_eq!(stream.withdrawn, 500);
+
+    // No extra to withdraw at the same timestamp
+    let result = s.client.try_withdraw_vested(&stream_id);
+    assert_eq!(result, Err(Ok(Error::NothingToDistribute)));
+
+    // Vested at end_time (2000) -> 100% vested -> 1_000 tokens
+    s.env.ledger().set_timestamp(2000);
+    assert_eq!(s.client.vested_of(&stream_id), 1_000);
+
+    let withdrawn_final = s.client.withdraw_vested(&stream_id);
+    assert_eq!(withdrawn_final, 500); // 1000 total - 500 previously withdrawn
+    assert_eq!(token_client.balance(&a), 500);
+    assert_eq!(token_client.balance(&b), 500);
+}
+
+#[test]
+fn test_stream_cancel() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let funder = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    let split_id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    let (token_id, token_client) = fund_token(&s.env, &funder, 1_000);
+
+    s.env.ledger().set_timestamp(1000);
+
+    let stream_id = s.client.create_stream(
+        &funder,
+        &split_id,
+        &token_id,
+        &1_000,
+        &1000,
+        &2000,
+    );
+
+    // Move to 1250 (25% elapsed)
+    s.env.ledger().set_timestamp(1250);
+    // Vested is 250. Unvested is 750.
+    s.client.cancel_stream(&stream_id);
+
+    // Funder got refunded unvested portion (750)
+    assert_eq!(token_client.balance(&funder), 750);
+    // Recipients got paid their vested share (250 / 2 = 125 each)
+    assert_eq!(token_client.balance(&a), 125);
+    assert_eq!(token_client.balance(&b), 125);
+
+    // Stream should be deleted
+    let result = s.client.try_get_stream(&stream_id);
+    assert_eq!(result, Err(Ok(Error::StreamNotFound)));
+}
+
+#[test]
+fn test_stream_top_up() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let funder = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    let split_id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    let (token_id, token_client) = fund_token(&s.env, &funder, 10_000);
+
+    s.env.ledger().set_timestamp(1000);
+
+    let stream_id = s.client.create_stream(
+        &funder,
+        &split_id,
+        &token_id,
+        &1_000,
+        &1000,
+        &2000,
+    );
+
+    s.client.top_up(&stream_id, &500);
+
+    let stream = s.client.get_stream(&stream_id);
+    assert_eq!(stream.amount, 1_500);
+    assert_eq!(token_client.balance(&funder), 8_500);
+
+    // Vested midway (1500) -> 50% of 1500 = 750
+    s.env.ledger().set_timestamp(1500);
+    assert_eq!(s.client.vested_of(&stream_id), 750);
+}
+
+#[test]
+fn test_stream_routes_through_nested_split() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let funder = Address::generate(&s.env);
+    let leaf_a = Address::generate(&s.env);
+    let leaf_b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &funder, 10_000);
+
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf_a), acct(&leaf_b)],
+        &vec![&s.env, 7_500, 2_500],
+        &None,
+    );
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, Recipient::Split(child)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    s.env.ledger().set_timestamp(1000);
+    let stream_id = s.client.create_stream(
+        &funder,
+        &parent,
+        &token_id,
+        &1_000,
+        &1000,
+        &2000,
+    );
+
+    s.env.ledger().set_timestamp(2000);
+    let withdrawn = s.client.withdraw_vested(&stream_id);
+    assert_eq!(withdrawn, 1_000);
+
+    assert_eq!(s.client.balance(&parent, &token_id), 0);
+    assert_eq!(s.client.balance(&child, &token_id), 1_000);
+
+    s.client.distribute(&child, &token_id);
+    assert_eq!(token_client.balance(&leaf_a), 750);
+    assert_eq!(token_client.balance(&leaf_b), 250);
+    assert_eq!(token_client.balance(&payer), 0);
+}
+
+#[test]
+fn test_stream_cancel_requires_funder_auth() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let funder = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let (token_id, _) = fund_token(&s.env, &funder, 1_000);
+
+    let split_id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    s.env.ledger().set_timestamp(1000);
+    let stream_id = s.client.create_stream(
+        &funder,
+        &split_id,
+        &token_id,
+        &1_000,
+        &1000,
+        &2000,
+    );
+
+    s.env.set_auths(&[]);
+    let result = s.env.try_invoke_contract::<(), Error>(
+        &s.client.address,
+        &soroban_sdk::Symbol::new(&s.env, "cancel_stream"),
+        (&stream_id,).into_val(&s.env),
+    );
+    assert!(result.is_err());
+
+    assert_eq!(s.client.get_stream(&stream_id).funder, funder);
+    assert_eq!(s.client.get_stream(&stream_id).id, stream_id);
+}
+
+proptest::proptest! {
+    #[test]
+    fn property_stream_withdrawals_never_over_release(
+        amount in 1i128..=1_000_000i128,
+        start_offset in 0u64..=10_000u64,
+        duration in 1u64..=10_000u64,
+        first_step in 1u64..=10_000u64,
+        second_step in 0u64..=10_000u64,
+        top_up in 0i128..=100_000i128,
+    ) {
+        let s = setup();
+        let creator = Address::generate(&s.env);
+        let funder = Address::generate(&s.env);
+        let leaf = Address::generate(&s.env);
+        let (token_id, _) = fund_token(&s.env, &funder, amount + top_up + 10_000);
+
+        let split_id = s.client.create_split(
+            &creator,
+            &vec![&s.env, acct(&leaf)],
+            &vec![&s.env, 10_000],
+            &None,
+        );
+
+        let start = 1_000u64 + start_offset;
+        let end = start + duration;
+        s.env.ledger().set_timestamp(start);
+        let stream_id = s.client.create_stream(
+            &funder,
+            &split_id,
+            &token_id,
+            &amount,
+            &start,
+            &end,
+        );
+
+        if top_up > 0 {
+            s.client.top_up(&stream_id, &top_up);
+        }
+
+        let mut current_time = start;
+        let first_time = start.saturating_add(first_step.min(duration));
+        current_time = current_time.max(first_time).min(end);
+        s.env.ledger().set_timestamp(current_time);
+        let vested_1 = s.client.vested_of(&stream_id);
+        let withdrawn_1 = match s.client.try_withdraw_vested(&stream_id) {
+            Ok(Ok(v)) => v,
+            _ => 0,
+        };
+        proptest::prop_assert!(withdrawn_1 >= 0);
+        proptest::prop_assert!(withdrawn_1 <= vested_1);
+
+        let second_time = current_time.saturating_add(second_step);
+        current_time = second_time.min(end);
+        s.env.ledger().set_timestamp(current_time);
+        let vested_2 = s.client.vested_of(&stream_id);
+        let withdrawn_2 = match s.client.try_withdraw_vested(&stream_id) {
+            Ok(Ok(v)) => v,
+            _ => 0,
+        };
+        proptest::prop_assert!(withdrawn_2 >= 0);
+        proptest::prop_assert!(withdrawn_1 + withdrawn_2 <= vested_2);
+
+        s.env.ledger().set_timestamp(end);
+        let vested_final = s.client.vested_of(&stream_id);
+        let withdrawn_final = match s.client.try_withdraw_vested(&stream_id) {
+            Ok(Ok(v)) => v,
+            _ => 0,
+        };
+        proptest::prop_assert_eq!(vested_final, amount + top_up);
+        proptest::prop_assert_eq!(withdrawn_1 + withdrawn_2 + withdrawn_final, amount + top_up);
+    }
+}
