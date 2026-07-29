@@ -123,5 +123,7 @@ pub fn calculate_vested(amount: i128, elapsed: u64, duration: u64) -> Option<i12
     let duration = duration as i128;
     let whole = amount / duration;
     let rem = amount % duration;
-    whole.checked_mul(elapsed)?.checked_add(rem * elapsed / duration)
+    whole
+        .checked_mul(elapsed)?
+        .checked_add(rem * elapsed / duration)
 }

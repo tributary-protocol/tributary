@@ -2395,14 +2395,9 @@ fn test_stream_lifecycle() {
     s.env.ledger().set_timestamp(1000);
 
     // 1. Create Stream
-    let stream_id = s.client.create_stream(
-        &funder,
-        &split_id,
-        &token_id,
-        &1_000,
-        &1000,
-        &2000,
-    );
+    let stream_id = s
+        .client
+        .create_stream(&funder, &split_id, &token_id, &1_000, &1000, &2000);
 
     assert_eq!(stream_id, 0);
     assert_eq!(token_client.balance(&funder), 9_000);
@@ -2471,14 +2466,9 @@ fn test_stream_cancel() {
 
     s.env.ledger().set_timestamp(1000);
 
-    let stream_id = s.client.create_stream(
-        &funder,
-        &split_id,
-        &token_id,
-        &1_000,
-        &1000,
-        &2000,
-    );
+    let stream_id = s
+        .client
+        .create_stream(&funder, &split_id, &token_id, &1_000, &1000, &2000);
 
     // Move to 1250 (25% elapsed)
     s.env.ledger().set_timestamp(1250);
@@ -2515,14 +2505,9 @@ fn test_stream_top_up() {
 
     s.env.ledger().set_timestamp(1000);
 
-    let stream_id = s.client.create_stream(
-        &funder,
-        &split_id,
-        &token_id,
-        &1_000,
-        &1000,
-        &2000,
-    );
+    let stream_id = s
+        .client
+        .create_stream(&funder, &split_id, &token_id, &1_000, &1000, &2000);
 
     s.client.top_up(&stream_id, &500);
 
@@ -2559,14 +2544,9 @@ fn test_stream_routes_through_nested_split() {
     );
 
     s.env.ledger().set_timestamp(1000);
-    let stream_id = s.client.create_stream(
-        &funder,
-        &parent,
-        &token_id,
-        &1_000,
-        &1000,
-        &2000,
-    );
+    let stream_id = s
+        .client
+        .create_stream(&funder, &parent, &token_id, &1_000, &1000, &2000);
 
     s.env.ledger().set_timestamp(2000);
     let withdrawn = s.client.withdraw_vested(&stream_id);
@@ -2597,14 +2577,9 @@ fn test_stream_cancel_requires_funder_auth() {
     );
 
     s.env.ledger().set_timestamp(1000);
-    let stream_id = s.client.create_stream(
-        &funder,
-        &split_id,
-        &token_id,
-        &1_000,
-        &1000,
-        &2000,
-    );
+    let stream_id = s
+        .client
+        .create_stream(&funder, &split_id, &token_id, &1_000, &1000, &2000);
 
     s.env.set_auths(&[]);
     let result = s.env.try_invoke_contract::<(), Error>(

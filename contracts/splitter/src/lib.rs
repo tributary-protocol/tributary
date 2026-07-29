@@ -772,7 +772,11 @@ impl Splitter {
             return Err(Error::InvalidAmount);
         }
 
-        let id: u64 = env.storage().instance().get(&DataKey::StreamCount).unwrap_or(0);
+        let id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::StreamCount)
+            .unwrap_or(0);
         let stream = Stream {
             id,
             split_id,
@@ -790,7 +794,9 @@ impl Splitter {
             .persistent()
             .extend_ttl(&stream_key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
-        env.storage().instance().set(&DataKey::StreamCount, &(id + 1));
+        env.storage()
+            .instance()
+            .set(&DataKey::StreamCount, &(id + 1));
         env.storage()
             .instance()
             .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
@@ -864,9 +870,19 @@ impl Splitter {
             .extend_ttl(&stream_key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
         let split = load(&env, stream.split_id)?;
-        payout(&env, &split, &env.current_contract_address(), &stream.token, claimable);
+        payout(
+            &env,
+            &split,
+            &env.current_contract_address(),
+            &stream.token,
+            claimable,
+        );
 
-        StreamWithdrawn { id, amount: claimable }.publish(&env);
+        StreamWithdrawn {
+            id,
+            amount: claimable,
+        }
+        .publish(&env);
         Ok(claimable)
     }
 
@@ -882,11 +898,7 @@ impl Splitter {
         env.storage().persistent().remove(&stream_key);
 
         let index_key = DataKey::StreamsOf(stream.funder.clone());
-        if let Some(mut streams) = env
-            .storage()
-            .persistent()
-            .get::<_, Vec<u64>>(&index_key)
-        {
+        if let Some(mut streams) = env.storage().persistent().get::<_, Vec<u64>>(&index_key) {
             if let Some(idx) = streams.first_index_of(&id) {
                 streams.remove(idx);
                 if streams.is_empty() {
@@ -904,15 +916,29 @@ impl Splitter {
 
         if claimable > 0 {
             let split = load(&env, stream.split_id)?;
-            payout(&env, &split, &env.current_contract_address(), &stream.token, claimable);
-            StreamWithdrawn { id, amount: claimable }.publish(&env);
+            payout(
+                &env,
+                &split,
+                &env.current_contract_address(),
+                &stream.token,
+                claimable,
+            );
+            StreamWithdrawn {
+                id,
+                amount: claimable,
+            }
+            .publish(&env);
         }
 
         if unvested > 0 {
             client.transfer(&env.current_contract_address(), &stream.funder, &unvested);
         }
 
-        StreamCancelled { id, refunded: unvested }.publish(&env);
+        StreamCancelled {
+            id,
+            refunded: unvested,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -939,7 +965,11 @@ impl Splitter {
             .persistent()
             .extend_ttl(&stream_key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
-        StreamToppedUp { id, added: received }.publish(&env);
+        StreamToppedUp {
+            id,
+            added: received,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -956,7 +986,6 @@ impl Splitter {
         }
     }
 }
-
 
 fn load_created(env: &Env, creator: &Address) -> Vec<u64> {
     let key = DataKey::Created(creator.clone());

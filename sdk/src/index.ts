@@ -258,25 +258,67 @@ export class Client extends ContractClient {
   }
   
   create_stream = ({funder, split_id, token, amount, start_time, end_time}: {funder: string, split_id: u64, token: string, amount: i128, start_time: u64, end_time: u64}, options?: MethodOptions) => {
-    return this.invoke("create_stream", {funder, split_id, token, amount, start_time, end_time}, options) as Promise<AssembledTransaction<Result<u64>>>;
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "create_stream",
+      args: this.spec.funcArgsToScVals("create_stream", {funder, split_id, token, amount, start_time, end_time}),
+      parseResultXdr: (result) => this.spec.funcResToNative("create_stream", result),
+    }) as Promise<AssembledTransaction<Result<u64>>>;
   }
   get_stream = ({id}: {id: u64}, options?: MethodOptions) => {
-    return this.invoke("get_stream", {id}, options) as Promise<AssembledTransaction<Result<Stream>>>;
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "get_stream",
+      args: this.spec.funcArgsToScVals("get_stream", {id}),
+      parseResultXdr: (result) => this.spec.funcResToNative("get_stream", result),
+    }) as Promise<AssembledTransaction<Result<Stream>>>;
   }
   vested_of = ({id}: {id: u64}, options?: MethodOptions) => {
-    return this.invoke("vested_of", {id}, options) as Promise<AssembledTransaction<Result<i128>>>;
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "vested_of",
+      args: this.spec.funcArgsToScVals("vested_of", {id}),
+      parseResultXdr: (result) => this.spec.funcResToNative("vested_of", result),
+    }) as Promise<AssembledTransaction<Result<i128>>>;
   }
   withdraw_vested = ({id}: {id: u64}, options?: MethodOptions) => {
-    return this.invoke("withdraw_vested", {id}, options) as Promise<AssembledTransaction<Result<i128>>>;
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "withdraw_vested",
+      args: this.spec.funcArgsToScVals("withdraw_vested", {id}),
+      parseResultXdr: (result) => this.spec.funcResToNative("withdraw_vested", result),
+    }) as Promise<AssembledTransaction<Result<i128>>>;
   }
   cancel_stream = ({id}: {id: u64}, options?: MethodOptions) => {
-    return this.invoke("cancel_stream", {id}, options) as Promise<AssembledTransaction<Result<void>>>;
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "cancel_stream",
+      args: this.spec.funcArgsToScVals("cancel_stream", {id}),
+      parseResultXdr: (result) => this.spec.funcResToNative("cancel_stream", result),
+    }) as Promise<AssembledTransaction<Result<void>>>;
   }
   top_up = ({id, amount_to_add}: {id: u64, amount_to_add: i128}, options?: MethodOptions) => {
-    return this.invoke("top_up", {id, amount_to_add}, options) as Promise<AssembledTransaction<Result<void>>>;
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "top_up",
+      args: this.spec.funcArgsToScVals("top_up", {id, amount_to_add}),
+      parseResultXdr: (result) => this.spec.funcResToNative("top_up", result),
+    }) as Promise<AssembledTransaction<Result<void>>>;
   }
   streams_of = ({funder}: {funder: string}, options?: MethodOptions) => {
-    return this.invoke("streams_of", {funder}, options) as Promise<AssembledTransaction<Array<u64>>>;
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "streams_of",
+      args: this.spec.funcArgsToScVals("streams_of", {funder}),
+      parseResultXdr: (result) => this.spec.funcResToNative("streams_of", result),
+    }) as Promise<AssembledTransaction<Array<u64>>>;
   }
 
   public readonly fromJSON = {
