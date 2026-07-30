@@ -8,6 +8,9 @@ on:
 jobs:
   contract:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
@@ -16,11 +19,47 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
       - name: Check markdown links
-        run: npx -y markdown-link-check -q README.md docs/architecture.md docs/integrations.md docs/mainnet.md
+        run: npx -y markdown-link-check -q README.md SECURITY.md docs/architecture.md docs/integrations.md docs/mainnet.md docs/security-threat-model.md
       - name: Spell check markdown files
         run: npx -y cspell --config .cspellrc.json "**/*.md"
       - run: cargo build --release --target wasm32v1-none -p tributary-splitter
+      - name: Measure contract size
+        run: |
+          wasm_path="target/wasm32v1-none/release/tributary_splitter.wasm"
+          if [ -f "$wasm_path" ]; then
+            size_bytes=$(wc -c < "$wasm_path" | xargs)
+            size_kb=$(awk "BEGIN {printf \"%.2f\", $size_bytes/1024}")
+            {
+              echo "## Contract size: tributary-splitter"
+              echo ""
+              echo "| Metric | Value |"
+              echo "| ------ | ----- |"
+              echo "| Size (bytes) | $size_bytes |"
+              echo "| Size (KiB) | ${size_kb} KiB |"
+            } > contract-size.md
+            cat contract-size.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Wasm file not found!"
+            exit 1
+          fi
+      - name: Comment contract size on PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: contract-size
+          path: contract-size.md
 
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - run: rustup update stable && rustup target add wasm32v1-none
+      - name: Generate benchmark costs
+        working-directory: contracts/splitter
+        run: cargo test benchmark_costs --profile release-with-debug -- --ignored --nocapture
+      - name: Check metrics
+        run: node scripts/check_metrics.js contracts/splitter/baseline.json contracts/splitter/costs.json
   coverage:
     runs-on: ubuntu-latest
     permissions:
@@ -57,7 +96,7 @@ jobs:
           header: contract-coverage
           path: coverage-summary.md
       - name: Upload lcov report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: contract-coverage-lcov
           path: lcov.info
@@ -75,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: npm install && npm run build

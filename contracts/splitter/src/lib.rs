@@ -9,8 +9,12 @@
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contractmeta, contracttype, token,
-    Address, Env, Vec, I256,
+    Address, Env, Vec,
 };
+
+pub mod math;
+
+pub use math::{MAX_RECIPIENTS, TOTAL_SHARES};
 
 contractmeta!(key = "name", val = "tributary-splitter");
 contractmeta!(
@@ -18,8 +22,6 @@ contractmeta!(
     val = "https://github.com/tributary-protocol/tributary"
 );
 
-pub const TOTAL_SHARES: u32 = 10_000;
-pub const MAX_RECIPIENTS: u32 = 32;
 pub const MAX_CASCADE_DEPTH: u32 = 5;
 pub const MAX_DISTRIBUTE_TOKENS: u32 = 10;
 
@@ -82,6 +84,25 @@ pub enum Error {
     TooManyTokens = 14,
     /// Code 15. No pending control transfer exists for this split.
     NoPendingTransfer = 15,
+    /// Code 16. Start time is after end time, or start/end times are invalid.
+    InvalidTimeBounds = 16,
+    /// Code 17. The stream ID does not exist in storage.
+    StreamNotFound = 17,
+    /// Code 18. Caller is not the stream's funder.
+    NotStreamFunder = 18,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Stream {
+    pub id: u64,
+    pub split_id: u64,
+    pub funder: Address,
+    pub token: Address,
+    pub amount: i128,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub withdrawn: i128,
 }
 
 #[contracttype]
@@ -109,12 +130,68 @@ pub struct TokenDistribution {
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the total number of splits created. Used as a counter for generating
+    /// new split IDs. Value is a `u64` stored in instance storage.
     Count,
+    /// Stores the split configuration for a given split ID. The value is a `Split`
+    /// struct containing recipients, shares, and controller. Stored in persistent
+    /// storage keyed by the split ID.
     Split(u64),
+    /// Stores the escrowed balance for a specific split and token. The value is an
+    /// `i128` representing the amount of the token held in escrow for that split.
+    /// Stored in persistent storage keyed by (split_id, token_address).
     Balance(u64, Address),
+    /// Stores the list of split IDs created by a specific address (creator). The value
+    /// is a `Vec<u64>` containing all split IDs created by that address. Stored in
+    /// persistent storage keyed by the creator's address.
     Created(Address),
+    /// Stores the list of tokens that have non-zero balances for a specific split.
+    /// The value is a `Vec<Address>` of token addresses. Used to efficiently track
+    /// which tokens need distribution. Stored in persistent storage keyed by split ID.
     HeldTokens(u64),
+    /// Stores the pending controller address during a two-step control transfer.
+    /// The value is an `Address` representing the proposed new controller. Stored in
+    /// persistent storage keyed by split ID. Removed after transfer is accepted or cancelled.
     PendingController(u64),
+    AccountBalance(Address, Address),
+    StreamCount,
+    Stream(u64),
+    StreamsOf(Address),
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct StreamCreated {
+    #[topic]
+    pub id: u64,
+    pub funder: Address,
+    pub split_id: u64,
+    pub token: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct StreamWithdrawn {
+    #[topic]
+    pub id: u64,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct StreamCancelled {
+    #[topic]
+    pub id: u64,
+    pub refunded: i128,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct StreamToppedUp {
+    #[topic]
+    pub id: u64,
+    pub added: i128,
 }
 
 #[contractevent]
@@ -578,10 +655,14 @@ impl Splitter {
 
     #[must_use]
     pub fn balance(env: Env, id: u64, token: Address) -> i128 {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Balance(id, token))
-            .unwrap_or(0)
+        let key = DataKey::Balance(id, token.clone());
+        let amount: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        if amount > 0 {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        }
+        amount
     }
 
     pub fn has_split(env: Env, id: u64) -> bool {
@@ -594,6 +675,10 @@ impl Splitter {
 
     pub fn recipient_count(env: Env, id: u64) -> Result<u32, Error> {
         Ok(load(&env, id)?.recipients.len())
+    }
+
+    pub fn get_shares(env: Env, id: u64) -> Result<Vec<u32>, Error> {
+        Ok(load(&env, id)?.shares)
     }
 
     #[must_use]
@@ -644,6 +729,262 @@ impl Splitter {
             .persistent()
             .get(&DataKey::PendingController(id))
     }
+
+    /// Claims any fallback balances credited to this account due to failed payouts.
+    pub fn claim(env: Env, account: Address, token: Address) -> Result<(), Error> {
+        let key = DataKey::AccountBalance(account.clone(), token.clone());
+        let held: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        if held == 0 {
+            return Err(Error::InvalidAmount);
+        }
+        env.storage().persistent().remove(&key);
+        let client = token::Client::new(&env, &token);
+        client.transfer(&env.current_contract_address(), &account, &held);
+        Ok(())
+    }
+
+    pub fn create_stream(
+        env: Env,
+        funder: Address,
+        split_id: u64,
+        token: Address,
+        amount: i128,
+        start_time: u64,
+        end_time: u64,
+    ) -> Result<u64, Error> {
+        funder.require_auth();
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        if start_time >= end_time {
+            return Err(Error::InvalidTimeBounds);
+        }
+        if !Self::has_split(env.clone(), split_id) {
+            return Err(Error::SplitNotFound);
+        }
+
+        let client = token::Client::new(&env, &token);
+        let vault = env.current_contract_address();
+        let before = client.balance(&vault);
+        client.transfer(&funder, &vault, &amount);
+        let received = client.balance(&vault) - before;
+        if received <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::StreamCount)
+            .unwrap_or(0);
+        let stream = Stream {
+            id,
+            split_id,
+            funder: funder.clone(),
+            token,
+            amount: received,
+            start_time,
+            end_time,
+            withdrawn: 0,
+        };
+
+        let stream_key = DataKey::Stream(id);
+        env.storage().persistent().set(&stream_key, &stream);
+        env.storage()
+            .persistent()
+            .extend_ttl(&stream_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::StreamCount, &(id + 1));
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+
+        let index_key = DataKey::StreamsOf(funder.clone());
+        let mut streams: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&index_key)
+            .unwrap_or_else(|| Vec::new(&env));
+        streams.push_back(id);
+        env.storage().persistent().set(&index_key, &streams);
+        env.storage()
+            .persistent()
+            .extend_ttl(&index_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+
+        StreamCreated {
+            id,
+            funder,
+            split_id,
+            token: stream.token,
+            amount: stream.amount,
+        }
+        .publish(&env);
+
+        Ok(id)
+    }
+
+    pub fn get_stream(env: Env, id: u64) -> Result<Stream, Error> {
+        let key = DataKey::Stream(id);
+        let stream: Stream = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::StreamNotFound)?;
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        Ok(stream)
+    }
+
+    pub fn vested_of(env: Env, id: u64) -> Result<i128, Error> {
+        let stream = Self::get_stream(env.clone(), id)?;
+        let now = env.ledger().timestamp();
+        let elapsed = if now <= stream.start_time {
+            0
+        } else if now >= stream.end_time {
+            stream.end_time - stream.start_time
+        } else {
+            now - stream.start_time
+        };
+        let duration = stream.end_time - stream.start_time;
+        let vested = math::calculate_vested(stream.amount, elapsed, duration)
+            .ok_or(Error::ArithmeticOverflow)?;
+        Ok(vested)
+    }
+
+    pub fn withdraw_vested(env: Env, id: u64) -> Result<i128, Error> {
+        let mut stream = Self::get_stream(env.clone(), id)?;
+        let vested = Self::vested_of(env.clone(), id)?;
+        let claimable = vested - stream.withdrawn;
+        if claimable <= 0 {
+            return Err(Error::NothingToDistribute);
+        }
+
+        stream.withdrawn += claimable;
+        let stream_key = DataKey::Stream(id);
+        env.storage().persistent().set(&stream_key, &stream);
+        env.storage()
+            .persistent()
+            .extend_ttl(&stream_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+
+        let split = load(&env, stream.split_id)?;
+        payout(
+            &env,
+            &split,
+            &env.current_contract_address(),
+            &stream.token,
+            claimable,
+        );
+
+        StreamWithdrawn {
+            id,
+            amount: claimable,
+        }
+        .publish(&env);
+        Ok(claimable)
+    }
+
+    pub fn cancel_stream(env: Env, id: u64) -> Result<(), Error> {
+        let stream = Self::get_stream(env.clone(), id)?;
+        stream.funder.require_auth();
+
+        let vested = Self::vested_of(env.clone(), id)?;
+        let claimable = vested - stream.withdrawn;
+        let unvested = stream.amount - vested;
+
+        let stream_key = DataKey::Stream(id);
+        env.storage().persistent().remove(&stream_key);
+
+        let index_key = DataKey::StreamsOf(stream.funder.clone());
+        if let Some(mut streams) = env.storage().persistent().get::<_, Vec<u64>>(&index_key) {
+            if let Some(idx) = streams.first_index_of(id) {
+                streams.remove(idx);
+                if streams.is_empty() {
+                    env.storage().persistent().remove(&index_key);
+                } else {
+                    env.storage().persistent().set(&index_key, &streams);
+                    env.storage()
+                        .persistent()
+                        .extend_ttl(&index_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+                }
+            }
+        }
+
+        let client = token::Client::new(&env, &stream.token);
+
+        if claimable > 0 {
+            let split = load(&env, stream.split_id)?;
+            payout(
+                &env,
+                &split,
+                &env.current_contract_address(),
+                &stream.token,
+                claimable,
+            );
+            StreamWithdrawn {
+                id,
+                amount: claimable,
+            }
+            .publish(&env);
+        }
+
+        if unvested > 0 {
+            client.transfer(&env.current_contract_address(), &stream.funder, &unvested);
+        }
+
+        StreamCancelled {
+            id,
+            refunded: unvested,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    pub fn top_up(env: Env, id: u64, amount_to_add: i128) -> Result<(), Error> {
+        let mut stream = Self::get_stream(env.clone(), id)?;
+        stream.funder.require_auth();
+        if amount_to_add <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let client = token::Client::new(&env, &stream.token);
+        let vault = env.current_contract_address();
+        let before = client.balance(&vault);
+        client.transfer(&stream.funder, &vault, &amount_to_add);
+        let received = client.balance(&vault) - before;
+        if received <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        stream.amount += received;
+        let stream_key = DataKey::Stream(id);
+        env.storage().persistent().set(&stream_key, &stream);
+        env.storage()
+            .persistent()
+            .extend_ttl(&stream_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+
+        StreamToppedUp {
+            id,
+            added: received,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn streams_of(env: Env, funder: Address) -> Vec<u64> {
+        let key = DataKey::StreamsOf(funder);
+        if let Some(streams) = env.storage().persistent().get(&key) {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+            streams
+        } else {
+            Vec::new(&env)
+        }
+    }
 }
 
 fn load_created(env: &Env, creator: &Address) -> Vec<u64> {
@@ -681,38 +1022,27 @@ fn validate(
             }
         }
     }
-    let mut total: u32 = 0;
-    for share in shares.iter() {
-        if share == 0 {
-            return Err(Error::ZeroShare);
-        }
-        total = total.checked_add(share).ok_or(Error::BadShareTotal)?;
-    }
-    if total != TOTAL_SHARES {
-        return Err(Error::BadShareTotal);
-    }
-    Ok(())
+    // Share checks live in `math` so Kani can prove them over all inputs.
+    math::validate_shares(shares.iter()).map_err(|e| match e {
+        math::ShareError::NoRecipients => Error::NoRecipients,
+        math::ShareError::TooManyRecipients => Error::TooManyRecipients,
+        math::ShareError::ZeroShare => Error::ZeroShare,
+        math::ShareError::BadShareTotal => Error::BadShareTotal,
+    })
 }
 
 fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
     let mut out = Vec::new(env);
     let last = split.recipients.len() - 1;
     let mut assigned: i128 = 0;
-    let total = I256::from_i128(env, i128::from(TOTAL_SHARES));
     for i in 0..split.recipients.len() {
         let part = if i == last {
+            // Dust: whatever rounding left over goes to the last recipient,
+            // so the parts sum to `amount` exactly.
             amount - assigned
         } else {
-            // `amount * share` can overflow i128 for large token amounts
-            // (custom high-supply tokens) before the division brings it back
-            // into range. Compute the intermediate in 256-bit space so any
-            // valid i128 amount stays panic- and wrap-free.
-            let product = I256::from_i128(env, amount).mul(&I256::from_i128(
-                env,
-                i128::from(split.shares.get_unchecked(i)),
-            ));
-            let part_i256 = product.div(&total);
-            part_i256.to_i128().ok_or(Error::ArithmeticOverflow)?
+            math::split_part(amount, split.shares.get_unchecked(i))
+                .ok_or(Error::ArithmeticOverflow)?
         };
         out.push_back(part);
         assigned += part;
@@ -723,14 +1053,35 @@ fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
 fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i128) {
     let client = token::Client::new(env, token);
     let vault = env.current_contract_address();
-    let parts = amounts(env, split, amount).unwrap_or_else(|_| Vec::new(env));
+
+    let last = split.recipients.len() - 1;
+    let mut assigned: i128 = 0;
+
     for i in 0..split.recipients.len() {
-        let part = parts.get_unchecked(i);
+        let part = if i == last {
+            amount - assigned
+        } else {
+            match math::split_part(amount, split.shares.get_unchecked(i)) {
+                Some(p) => p,
+                None => return,
+            }
+        };
+        assigned += part;
+
         if part <= 0 {
             continue;
         }
+
         match split.recipients.get_unchecked(i) {
-            Recipient::Account(addr) => client.transfer(from, &addr, &part),
+            Recipient::Account(addr) => match client.try_transfer(from, &addr, &part) {
+                Ok(Ok(())) => {}
+                _ => {
+                    if from != &vault {
+                        client.transfer(from, &vault, &part);
+                    }
+                    credit_account(env, &addr, token, part);
+                }
+            },
             Recipient::Split(child) => {
                 if from != &vault {
                     client.transfer(from, &vault, &part);
@@ -741,10 +1092,22 @@ fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i12
     }
 }
 
+fn credit_account(env: &Env, account: &Address, token: &Address, amount: i128) {
+    let key = DataKey::AccountBalance(account.clone(), token.clone());
+    let held: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+    env.storage().persistent().set(&key, &(held + amount));
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
 fn credit(env: &Env, id: u64, token: &Address, amount: i128) {
     let key = DataKey::Balance(id, token.clone());
     let held: i128 = env.storage().persistent().get(&key).unwrap_or(0);
     env.storage().persistent().set(&key, &(held + amount));
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
     let tokens_key = DataKey::HeldTokens(id);
     let mut tokens: Vec<Address> = env
@@ -823,9 +1186,8 @@ fn distribute_recursive(
         Err(Error::NothingToDistribute) => {
             if current_depth == 0 {
                 return Err(Error::NothingToDistribute);
-            } else {
-                return Ok(0);
             }
+            return Ok(0);
         }
         Err(e) => return Err(e),
     };
@@ -839,13 +1201,9 @@ fn distribute_recursive(
     .publish(env);
 
     if current_depth < max_depth {
-        let parts = amounts(env, &split, amount).unwrap_or_else(|_| Vec::new(env));
         for i in 0..split.recipients.len() {
-            let part = parts.get_unchecked(i);
-            if part > 0 {
-                if let Recipient::Split(child_id) = split.recipients.get_unchecked(i) {
-                    distribute_recursive(env, child_id, token, current_depth + 1, max_depth)?;
-                }
+            if let Recipient::Split(child_id) = split.recipients.get_unchecked(i) {
+                distribute_recursive(env, child_id, token, current_depth + 1, max_depth)?;
             }
         }
     }

@@ -1,0 +1,6 @@
+{
+  "pay_32": { "cpu": 7444961, "mem": 1512648 },
+  "pay_many_5x5": { "cpu": 6085040, "mem": 1309893 },
+  "distribute_32": { "cpu": 7488697, "mem": 1530921 },
+  "distribute_cascade_depth_5": { "cpu": 6001704, "mem": 1316865 }
+}

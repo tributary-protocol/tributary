@@ -1,0 +1,30 @@
+[package]
+name = "tributary-splitter-proofs"
+description = "Kani proof harnesses for the splitter's share arithmetic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+doctest = false
+
+# `cargo kani` sets `--cfg kani`; teach a plain `cargo check` that it is a
+# legitimate name so the harnesses do not warn when Kani is not installed.
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }
+
+# No dependencies on purpose: the harnesses drive `contracts/splitter/src/math.rs`
+# directly (via `#[path]`), so the model checker never has to reason about the
+# Soroban host. `cargo kani` injects the `kani` crate itself.
+[dependencies]
+
+[features]
+# Each feature swaps the verified arithmetic for one deliberately broken
+# variant, so the mutation check can confirm the proofs actually fail when the
+# math is wrong. Exactly one at a time; see `scripts/kani-mutation-check.sh`.
+mutant-round-up = []
+mutant-narrow-mul = []
+mutant-fixed-dust = []
+mutant-loose-total = []

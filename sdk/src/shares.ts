@@ -4,9 +4,21 @@
  * sum to exactly 10_000 (see the contract's `BadShareTotal` error).
  */
 
+/**
+ * Total number of basis points a valid `shares` array must sum to.
+ * 10_000 basis points represents 100% of a split.
+ */
 export const TOTAL_BASIS_POINTS = 10_000;
 
+/**
+ * Thrown when a `shares` or `weights` array passed to one of the
+ * helpers in this module is invalid (wrong length, non-positive
+ * entries, or a total that doesn't add up to {@link TOTAL_BASIS_POINTS}).
+ */
 export class InvalidSharesError extends Error {
+  /**
+   * @param message - Human-readable explanation of what was invalid.
+   */
   constructor(message: string) {
     super(message);
     this.name = "InvalidSharesError";
@@ -15,8 +27,22 @@ export class InvalidSharesError extends Error {
 
 /**
  * Validates that `shares` is a non-empty array of positive integers
- * summing to exactly `TOTAL_BASIS_POINTS`. Throws `InvalidSharesError`
- * with a specific message on the first problem found.
+ * summing to exactly {@link TOTAL_BASIS_POINTS}.
+ *
+ * Use this before calling `create_split` / `update_split` to catch a
+ * malformed shares array locally instead of round-tripping to the
+ * contract and getting back `BadShareTotal`.
+ *
+ * @param shares - Basis-point allocations, one per recipient.
+ * @throws {InvalidSharesError} If `shares` is empty, contains a
+ *   non-integer or non-positive value, or does not sum to
+ *   {@link TOTAL_BASIS_POINTS}.
+ *
+ * @example
+ * ```ts
+ * validateShares([5_000, 3_000, 2_000]); // ok, sums to 10_000
+ * validateShares([5_000, 3_000]); // throws InvalidSharesError
+ * ```
  */
 export function validateShares(shares: ReadonlyArray<number>): void {
   if (!Array.isArray(shares) || shares.length === 0) {
@@ -42,10 +68,28 @@ export function validateShares(shares: ReadonlyArray<number>): void {
 
 /**
  * Builds a valid `shares` array from arbitrary positive weights
- * (e.g. percentages like [50, 30, 20], or ratios like [2, 1, 1]).
- * Rounds down and hands out the remainder, one basis point at a
- * time, to the entries with the largest fractional remainder so the
- * result always sums to exactly `TOTAL_BASIS_POINTS`.
+ * (e.g. percentages like `[50, 30, 20]`, or ratios like `[2, 1, 1]`).
+ *
+ * Each weight is scaled to basis points and rounded down; the
+ * rounding remainder is then handed out, one basis point at a time,
+ * to the entries with the largest fractional remainder — so the
+ * result always sums to exactly {@link TOTAL_BASIS_POINTS} with no
+ * basis points lost or duplicated.
+ *
+ * @param weights - Positive, arbitrary-scale weights (percentages,
+ *   ratios, etc). Do not need to sum to any particular value.
+ * @returns A `shares` array, the same length as `weights`, that sums
+ *   to exactly {@link TOTAL_BASIS_POINTS} and is already valid per
+ *   {@link validateShares}.
+ * @throws {InvalidSharesError} If `weights` is empty, contains a
+ *   non-positive or non-finite value, or if a weight is small enough
+ *   relative to the others that it would round down to a zero share.
+ *
+ * @example
+ * ```ts
+ * sharesFromWeights([50, 30, 20]); // [5_000, 3_000, 2_000]
+ * sharesFromWeights([1, 1, 1]);    // [3_334, 3_333, 3_333]
+ * ```
  */
 export function sharesFromWeights(weights: ReadonlyArray<number>): number[] {
   if (!Array.isArray(weights) || weights.length === 0) {

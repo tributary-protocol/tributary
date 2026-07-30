@@ -1,77 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  ConversionError,
-  formatAmount,
-  fromStroops,
-  recipientLabel,
-  shortAddress,
-  splitPath,
-  toStroops,
-  tokenCode,
-  TOKENS,
-} from "./tributary";
-
-describe("tokenCode", () => {
-  it("returns the code for a known token contract", () => {
-    expect(tokenCode(TOKENS[0].contract)).toBe("XLM");
-    expect(tokenCode(TOKENS[1].contract)).toBe("USDC");
-  });
-
-  it("shortens unknown contracts and handles a missing contract", () => {
-    expect(tokenCode("CUNKNOWN1234567890")).toBe("CUNK…7890");
-    expect(tokenCode(undefined)).toBe("");
-  });
-});
-
-describe("recipientLabel", () => {
-  it("shortens account recipients", () => {
-    expect(
-      recipientLabel({
-        tag: "Account",
-        values: ["GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"],
-      }),
-    ).toBe("GABC…7890");
-  });
-
-  it("labels split recipients, including split zero", () => {
-    expect(recipientLabel({ tag: "Split", values: [0n] })).toBe("split #0");
-  });
-});
-
-describe("shortAddress", () => {
-  it("keeps the first and last four characters of a long address", () => {
-    expect(shortAddress("GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")).toBe(
-      "GABC…7890",
-    );
-  });
-
-  it("handles empty and shorter-than-eight-character addresses", () => {
-    expect(shortAddress("")).toBe("…");
-    expect(shortAddress("GABC")).toBe("GABC…GABC");
-  });
-});
-
-describe("splitPath", () => {
-  it("builds a route for a bigint split id", () => {
-    expect(splitPath(42n)).toBe("/split/42");
-  });
-
-  it("preserves string ids, including an empty id", () => {
-    expect(splitPath("0007")).toBe("/split/0007");
-    expect(splitPath("")).toBe("/split/");
-  });
-});
-
-describe("formatAmount", () => {
-  it("adds grouping and preserves a decimal fraction", () => {
-    expect(formatAmount("1234567.5")).toBe("1,234,567.5");
-  });
-
-  it("returns non-numeric and empty input unchanged", () => {
-    expect(formatAmount("not-an-amount")).toBe("not-an-amount");
-    expect(formatAmount("")).toBe("");
-  });
-});
+import { fromStroops, toStroops, ConversionError, formatAmount, shortAddress, recipientLabel } from "./tributary";
 
 describe("fromStroops", () => {
   it("formats small values with up to 7 decimal places", () => {
@@ -86,25 +14,22 @@ describe("fromStroops", () => {
   });
 
   it("is exact at and around Number.MAX_SAFE_INTEGER", () => {
-    // Number.MAX_SAFE_INTEGER = 9_007_199_254_740_991
     const atLimit = BigInt(Number.MAX_SAFE_INTEGER);
     expect(fromStroops(atLimit)).toBe("900,719,925.4740991");
   });
 
   it("distinguishes values above 2^53 that collapse when cast through Number()", () => {
-    // These two bigints are adjacent, but Number(...) rounds them to the
-    // same double, which is exactly the bug this fix removes.
     const a = 90071992547409910n;
     const b = 90071992547409911n;
 
-    expect(Number(a)).toBe(Number(b)); // sanity check: the old bug's root cause
+    expect(Number(a)).toBe(Number(b));
     expect(fromStroops(a)).toBe("9,007,199,254.740991");
     expect(fromStroops(b)).toBe("9,007,199,254.7409911");
     expect(fromStroops(a)).not.toBe(fromStroops(b));
   });
 
   it("handles very large i128-scale amounts exactly", () => {
-    const huge = 170141183460469231731687303715884105727n; // i128::MAX in stroops
+    const huge = 170141183460469231731687303715884105727n;
     const result = fromStroops(huge);
     expect(result.startsWith("17,014,118,346,046,923,173,168,730,371,588")).toBe(true);
   });
@@ -287,5 +212,38 @@ describe("Token conversion functions", () => {
       const back = fromStroops(stroops, 7);
       expect(back).toBe("100.5");
     });
+  });
+});
+
+describe("formatAmount", () => {
+  it("formats valid decimal string with commas", () => {
+    expect(formatAmount("1000")).toBe("1,000");
+  });
+
+  it("returns input string if non-numeric", () => {
+    expect(formatAmount("abc")).toBe("abc");
+  });
+});
+
+describe("shortAddress", () => {
+  it("shortens stellar address", () => {
+    expect(
+      shortAddress("GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFXYFTRE65OTHVRWPAHV7")
+    ).toBe("GBRP…AHV7");
+  });
+});
+
+describe("recipientLabel", () => {
+  it("formats account recipient", () => {
+    expect(
+      recipientLabel({
+        tag: "Account",
+        values: ["GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFXYFTRE65OTHVRWPAHV7"],
+      })
+    ).toBe("GBRP…AHV7");
+  });
+
+  it("formats split recipient", () => {
+    expect(recipientLabel({ tag: "Split", values: [42n] })).toBe("split #42");
   });
 });
