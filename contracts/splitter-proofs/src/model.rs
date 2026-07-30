@@ -46,6 +46,7 @@ pub fn amounts<'a>(
 
 /// The last recipient's part: everything the rounding-down left over.
 #[cfg(not(feature = "mutant-fixed-dust"))]
+#[allow(clippy::unnecessary_wraps)]
 fn dust(amount: i128, assigned: i128, _last_share: u32) -> Result<i128, Overflow> {
     Ok(amount - assigned)
 }
@@ -87,7 +88,7 @@ pub fn payout(
     from_is_vault: bool,
     scratch: &mut [i128],
 ) -> Result<Ledger, Overflow> {
-    assert!(shares.len() == is_nested.len());
+    assert_eq!(shares.len(), is_nested.len());
     let parts = amounts(shares, amount, scratch)?;
     let mut ledger = Ledger::default();
     // Indexed rather than iterated: walking the slice pulls CBMC's pointer

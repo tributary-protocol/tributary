@@ -41,6 +41,7 @@
     "multi",
     "permissionless",
     "contracterror",
+    "contracttype",
     "repr",
     "CDLZFC",
     "SYJYDZT",
@@ -58,6 +59,7 @@
     "summarises",
     "keypair",
     "keypairs",
+    "reentrancy",
     "trustline",
     "trustlines",
     "behaviour",
@@ -75,7 +77,11 @@
     "CBMC's",
     "reentrancy",
     "CaDiCaL",
-    "bitblasting"
+    "bitblasting",
+    "Keypair",
+    "inspectable",
+    "BIGSERIAL",
+    "TIMESTAMPTZ"
   ],
   "ignoreWords": [],
   "ignorePaths": [

@@ -21,3 +21,7 @@ debug-assertions = false
 panic = "abort"
 codegen-units = 1
 lto = true
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true

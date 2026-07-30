@@ -60,8 +60,8 @@ pub fn split_part(amount: i128, share: u32) -> Option<i128> {
     if amount < 0 || share > TOTAL_SHARES {
         return None;
     }
-    let total = TOTAL_SHARES as i128;
-    let share = share as i128;
+    let total = i128::from(TOTAL_SHARES);
+    let share = i128::from(share);
     let whole = amount / total;
     let rem = amount % total;
     // Both `checked_` calls are provably total on this domain (see the Kani
@@ -95,4 +95,35 @@ pub fn validate_shares<I: Iterator<Item = u32>>(shares: I) -> Result<(), ShareEr
         return Err(ShareError::BadShareTotal);
     }
     Ok(())
+}
+
+/// Calculates the linear vested amount: `floor(amount * elapsed / duration)`.
+///
+/// Under the same domain rules as split_part, it avoids overflow by splitting the
+/// amount into quotient and remainder against duration before multiplying:
+///
+/// ```text
+/// amount = q * duration + r,  0 <= r < duration
+/// amount * elapsed / duration = q * elapsed + (r * elapsed) / duration
+/// ```
+///
+/// Returns `None` if `amount < 0`, `duration == 0`, or `elapsed > duration`.
+#[must_use]
+pub fn calculate_vested(amount: i128, elapsed: u64, duration: u64) -> Option<i128> {
+    if amount < 0 || duration == 0 || elapsed > duration {
+        return None;
+    }
+    if elapsed == 0 {
+        return Some(0);
+    }
+    if elapsed == duration {
+        return Some(amount);
+    }
+    let elapsed = elapsed as i128;
+    let duration = duration as i128;
+    let whole = amount / duration;
+    let rem = amount % duration;
+    whole
+        .checked_mul(elapsed)?
+        .checked_add(rem * elapsed / duration)
 }
