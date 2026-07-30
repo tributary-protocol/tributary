@@ -1,5 +1,5 @@
 import { Buffer } from "buffer";
-import { Address } from "@stellar/stellar-sdk";
+import { Address, xdr, scValToNative } from "@stellar/stellar-sdk";
 import {
   AssembledTransaction,
   Client as ContractClient,
@@ -23,6 +23,7 @@ import type {
 } from "@stellar/stellar-sdk/contract";
 import { Server as RpcServer, Api } from "@stellar/stellar-sdk/rpc";
 export * from "@stellar/stellar-sdk";
+export { account, split } from "./helpers.js";
 export * as contract from "@stellar/stellar-sdk/contract";
 export * as rpc from "@stellar/stellar-sdk/rpc";
 export * from "./shares.js";
@@ -53,14 +54,33 @@ export const Errors = {
   10: {message:"BadChildSplit"},
   11: {message:"ArithmeticOverflow"},
   12: {message:"SplitHasBalance"},
-  13: {message:"NoPendingTransfer"},
+  13: {message:"MaxDepthExceeded"},
+  14: {message:"TooManyTokens"},
+  15: {message:"NoPendingTransfer"},
+  16: {message:"InvalidTimeBounds"},
+  17: {message:"StreamNotFound"},
+  18: {message:"NotStreamFunder"},
 }
 
+export function decode(code: number): string | undefined {
+  return (Errors as Record<number, { message: string }>)[code]?.message;
+}
 
 export interface Split {
   controller: Option<string>;
   recipients: Array<Recipient>;
   shares: Array<u32>;
+}
+
+export interface Stream {
+  id: u64;
+  split_id: u64;
+  funder: string;
+  token: string;
+  amount: i128;
+  start_time: u64;
+  end_time: u64;
+  withdrawn: i128;
 }
 
 export type Recipient = {tag: "Account", values: readonly [string]} | {tag: "Split", values: readonly [u64]};
@@ -179,6 +199,14 @@ export interface Client {
    * Construct and simulate a pending_controller transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   pending_controller: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Option<string>>>
+
+  create_stream: ({funder, split_id, token, amount, start_time, end_time}: {funder: string, split_id: u64, token: string, amount: i128, start_time: u64, end_time: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<u64>>>
+  get_stream: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<Stream>>>
+  vested_of: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<i128>>>
+  withdraw_vested: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<i128>>>
+  cancel_stream: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  top_up: ({id, amount_to_add}: {id: u64, amount_to_add: i128}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  streams_of: ({funder}: {funder: string}, options?: MethodOptions) => Promise<AssembledTransaction<Array<u64>>>
 }
 export class Client extends ContractClient {
   static async deploy<T = Client>(
@@ -228,6 +256,71 @@ export class Client extends ContractClient {
       options
     )
   }
+  
+  create_stream = ({funder, split_id, token, amount, start_time, end_time}: {funder: string, split_id: u64, token: string, amount: i128, start_time: u64, end_time: u64}, options?: MethodOptions) => {
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "create_stream",
+      args: this.spec.funcArgsToScVals("create_stream", {funder, split_id, token, amount, start_time, end_time}),
+      parseResultXdr: (result) => this.spec.funcResToNative("create_stream", result),
+    }) as Promise<AssembledTransaction<Result<u64>>>;
+  }
+  get_stream = ({id}: {id: u64}, options?: MethodOptions) => {
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "get_stream",
+      args: this.spec.funcArgsToScVals("get_stream", {id}),
+      parseResultXdr: (result) => this.spec.funcResToNative("get_stream", result),
+    }) as Promise<AssembledTransaction<Result<Stream>>>;
+  }
+  vested_of = ({id}: {id: u64}, options?: MethodOptions) => {
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "vested_of",
+      args: this.spec.funcArgsToScVals("vested_of", {id}),
+      parseResultXdr: (result) => this.spec.funcResToNative("vested_of", result),
+    }) as Promise<AssembledTransaction<Result<i128>>>;
+  }
+  withdraw_vested = ({id}: {id: u64}, options?: MethodOptions) => {
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "withdraw_vested",
+      args: this.spec.funcArgsToScVals("withdraw_vested", {id}),
+      parseResultXdr: (result) => this.spec.funcResToNative("withdraw_vested", result),
+    }) as Promise<AssembledTransaction<Result<i128>>>;
+  }
+  cancel_stream = ({id}: {id: u64}, options?: MethodOptions) => {
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "cancel_stream",
+      args: this.spec.funcArgsToScVals("cancel_stream", {id}),
+      parseResultXdr: (result) => this.spec.funcResToNative("cancel_stream", result),
+    }) as Promise<AssembledTransaction<Result<void>>>;
+  }
+  top_up = ({id, amount_to_add}: {id: u64, amount_to_add: i128}, options?: MethodOptions) => {
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "top_up",
+      args: this.spec.funcArgsToScVals("top_up", {id, amount_to_add}),
+      parseResultXdr: (result) => this.spec.funcResToNative("top_up", result),
+    }) as Promise<AssembledTransaction<Result<void>>>;
+  }
+  streams_of = ({funder}: {funder: string}, options?: MethodOptions) => {
+    return AssembledTransaction.build({
+      ...this.options,
+      ...options,
+      method: "streams_of",
+      args: this.spec.funcArgsToScVals("streams_of", {funder}),
+      parseResultXdr: (result) => this.spec.funcResToNative("streams_of", result),
+    }) as Promise<AssembledTransaction<Array<u64>>>;
+  }
+
   public readonly fromJSON = {
     pay: this.txFromJSON<Result<void>>,
         balance: this.txFromJSON<i128>,
@@ -245,7 +338,14 @@ export class Client extends ContractClient {
         preview_payout: this.txFromJSON<Result<Array<i128>>>,
         cancel_transfer: this.txFromJSON<Result<void>>,
         transfer_control: this.txFromJSON<Result<void>>,
-        pending_controller: this.txFromJSON<Option<string>>
+        pending_controller: this.txFromJSON<Option<string>>,
+        create_stream: this.txFromJSON<Result<u64>>,
+        get_stream: this.txFromJSON<Result<Stream>>,
+        vested_of: this.txFromJSON<Result<i128>>,
+        withdraw_vested: this.txFromJSON<Result<i128>>,
+        cancel_stream: this.txFromJSON<Result<void>>,
+        top_up: this.txFromJSON<Result<void>>,
+        streams_of: this.txFromJSON<Array<u64>>
   }
 }
 
@@ -288,4 +388,228 @@ export async function waitForConfirmation(
   throw new Error(
     `Transaction ${txHash} was not confirmed within ${timeout / 1_000}s`,
   );
+}
+
+export interface SplitCreatedEvent {
+  type: "SplitCreated";
+  id: bigint;
+  creator: string;
+}
+
+export interface SplitPaidEvent {
+  type: "SplitPaid";
+  id: bigint;
+  token: string;
+  amount: bigint;
+}
+
+export interface SplitUpdatedEvent {
+  type: "SplitUpdated";
+  id: bigint;
+}
+
+export interface SplitClosedEvent {
+  type: "SplitClosed";
+  id: bigint;
+}
+
+export interface ControlTransferredEvent {
+  type: "ControlTransferred";
+  id: bigint;
+  new_controller: string | null;
+}
+
+export interface DepositedEvent {
+  type: "Deposited";
+  id: bigint;
+  token: string;
+  amount: bigint;
+}
+
+export interface DistributedEvent {
+  type: "Distributed";
+  id: bigint;
+  token: string;
+  amount: bigint;
+}
+
+export interface StreamCreatedEvent {
+  type: "StreamCreated";
+  id: bigint;
+  funder: string;
+  split_id: bigint;
+  token: string;
+  amount: bigint;
+}
+
+export interface StreamWithdrawnEvent {
+  type: "StreamWithdrawn";
+  id: bigint;
+  amount: bigint;
+}
+
+export interface StreamCancelledEvent {
+  type: "StreamCancelled";
+  id: bigint;
+  refunded: bigint;
+}
+
+export interface StreamToppedUpEvent {
+  type: "StreamToppedUp";
+  id: bigint;
+  added: bigint;
+}
+
+export type ContractEvent =
+  | SplitCreatedEvent
+  | SplitPaidEvent
+  | SplitUpdatedEvent
+  | SplitClosedEvent
+  | ControlTransferredEvent
+  | DepositedEvent
+  | DistributedEvent
+  | StreamCreatedEvent
+  | StreamWithdrawnEvent
+  | StreamCancelledEvent
+  | StreamToppedUpEvent;
+
+function parseScVal(val: any): any {
+  if (typeof val === "string") {
+    try {
+      return xdr.ScVal.fromXDR(val, "base64");
+    } catch {
+      return val;
+    }
+  }
+  if (val && typeof val === "object") {
+    if (typeof val.xdr === "string") {
+      try {
+        return xdr.ScVal.fromXDR(val.xdr, "base64");
+      } catch {
+        return val;
+      }
+    }
+    if (typeof val.toXDR === "function") {
+      return val;
+    }
+  }
+  return val;
+}
+
+/**
+ * Decodes a raw contract event from RPC or indexer into a typed event object.
+ * Returns null if the event is not a recognized contract event or cannot be parsed.
+ */
+export function decodeEvent(event: {
+  topic: ReadonlyArray<any>;
+  value: any;
+}): ContractEvent | null {
+  if (!event || !Array.isArray(event.topic) || event.topic.length === 0) {
+    return null;
+  }
+
+  try {
+    const parsedTopics = event.topic.map(t => parseScVal(t));
+    const parsedValue = parseScVal(event.value);
+
+    const nativeTopics = parsedTopics.map(t => {
+      if (t && typeof t.toXDR === "function") {
+        return scValToNative(t);
+      }
+      return t;
+    });
+
+    const type = nativeTopics[0];
+    if (typeof type !== "string") {
+      return null;
+    }
+
+    const idVal = nativeTopics[1];
+    if (idVal === undefined || idVal === null) {
+      return null;
+    }
+    const id = typeof idVal === "bigint" ? idVal : BigInt(idVal);
+
+    let nativeValue = parsedValue;
+    if (parsedValue && typeof parsedValue.toXDR === "function") {
+      nativeValue = scValToNative(parsedValue);
+    }
+
+    switch (type) {
+      case "SplitCreated":
+        return {
+          type: "SplitCreated",
+          id,
+          creator: nativeValue.creator,
+        };
+      case "SplitPaid":
+        return {
+          type: "SplitPaid",
+          id,
+          token: nativeValue.token,
+          amount: typeof nativeValue.amount === "bigint" ? nativeValue.amount : BigInt(nativeValue.amount),
+        };
+      case "SplitUpdated":
+        return {
+          type: "SplitUpdated",
+          id,
+        };
+      case "SplitClosed":
+        return {
+          type: "SplitClosed",
+          id,
+        };
+      case "ControlTransferred":
+        return {
+          type: "ControlTransferred",
+          id,
+          new_controller: nativeValue.new_controller ?? null,
+        };
+      case "Deposited":
+        return {
+          type: "Deposited",
+          id,
+          token: nativeValue.token,
+          amount: typeof nativeValue.amount === "bigint" ? nativeValue.amount : BigInt(nativeValue.amount),
+        };
+      case "Distributed":
+        return {
+          type: "Distributed",
+          id,
+          token: nativeValue.token,
+          amount: typeof nativeValue.amount === "bigint" ? nativeValue.amount : BigInt(nativeValue.amount),
+        };
+      case "StreamCreated":
+        return {
+          type: "StreamCreated",
+          id,
+          funder: nativeValue.funder,
+          split_id: typeof nativeValue.split_id === "bigint" ? nativeValue.split_id : BigInt(nativeValue.split_id),
+          token: nativeValue.token,
+          amount: typeof nativeValue.amount === "bigint" ? nativeValue.amount : BigInt(nativeValue.amount),
+        };
+      case "StreamWithdrawn":
+        return {
+          type: "StreamWithdrawn",
+          id,
+          amount: typeof nativeValue.amount === "bigint" ? nativeValue.amount : BigInt(nativeValue.amount),
+        };
+      case "StreamCancelled":
+        return {
+          type: "StreamCancelled",
+          id,
+          refunded: typeof nativeValue.refunded === "bigint" ? nativeValue.refunded : BigInt(nativeValue.refunded),
+        };
+      case "StreamToppedUp":
+        return {
+          type: "StreamToppedUp",
+          id,
+          added: typeof nativeValue.added === "bigint" ? nativeValue.added : BigInt(nativeValue.added),
+        };
+      default:
+        return null;
+    }
+  } catch (err) {
+    return null;
+  }
 }

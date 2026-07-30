@@ -1,25 +1,414 @@
+/**
+ * Indexer tests.
+ *
+ * Pure-logic helpers (validateConfig, state management, dedup, cursor math)
+ * are imported from state.mjs which has no external dependencies, so these
+ * tests run without @stellar/stellar-sdk installed.
+ */
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  validateConfig,
+  loadState,
+  saveState,
+  cursorLedger,
+  isCursorSafeToCommit,
+  deduplicateEvents,
+} from "./state.mjs";
+
+// ---------------------------------------------------------------------------
+// validateConfig
+// ---------------------------------------------------------------------------
+
+test("validateConfig rejects missing required env values", () => {
+  const result = validateConfig({ CONTRACT_ID: "", RPC_URL: "" });
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateConfig } from './index.mjs';
+
+import { initialScanPosition, parseArgs } from './cli.mjs';
+
+import {
+  validateConfig,
+  shouldLog,
+  formatLogEntry,
+  cursorLedger,
+  calculateScanLag,
+  createMetricsTracker,
+  runPollingLoop,
+} from './index.mjs';
 
 test('validateConfig rejects missing required env values', () => {
   const result = validateConfig({
     CONTRACT_ID: '',
     RPC_URL: '',
   });
-
   assert.equal(result.ok, false);
   assert.match(result.error, /CONTRACT_ID/);
   assert.match(result.error, /RPC_URL/);
 });
 
-test('validateConfig accepts populated env values', () => {
+test("validateConfig accepts populated env values", () => {
+test('validateConfig accepts populated env values and defaults LOG_LEVEL to info', () => {
   const result = validateConfig({
-    CONTRACT_ID: 'CC123',
-    RPC_URL: 'https://example.com',
+    CONTRACT_ID: "CC123",
+    RPC_URL: "https://example.com",
   });
-
   assert.equal(result.ok, true);
+  assert.equal(result.value.CONTRACT_ID, "CC123");
+  assert.equal(result.value.RPC_URL, "https://example.com");
+});
+
+// ---------------------------------------------------------------------------
+// cursorLedger
+// ---------------------------------------------------------------------------
+
+test("cursorLedger extracts the ledger sequence from a cursor string", () => {
+  // Ledger 100 shifted left 32 bits
+  const cursor = `${100n << 32n}-1-0`;
+  assert.equal(cursorLedger(cursor), 100);
+});
+
+test("cursorLedger handles large ledger numbers", () => {
+  const ledger = 50_000_000;
+  const cursor = `${BigInt(ledger) << 32n}-0-0`;
+  assert.equal(cursorLedger(cursor), ledger);
+});
+
+// ---------------------------------------------------------------------------
+// isCursorSafeToCommit
+// ---------------------------------------------------------------------------
+
+test("isCursorSafeToCommit returns true when cursor ledger is well behind tip", () => {
+  const cursor = `${200n << 32n}-0-0`; // ledger 200, tip 210, depth 2
+  assert.equal(isCursorSafeToCommit(cursor, 210, 2), true);
+});
+
+test("isCursorSafeToCommit returns true at exactly tip minus reorgDepth", () => {
+  const cursor = `${208n << 32n}-0-0`; // 208 <= 210 - 2
+  assert.equal(isCursorSafeToCommit(cursor, 210, 2), true);
+});
+
+test("isCursorSafeToCommit returns false when cursor ledger is within reorg window", () => {
+  const cursor = `${209n << 32n}-0-0`; // 209 > 210 - 2
+  assert.equal(isCursorSafeToCommit(cursor, 210, 2), false);
+});
+
+test("isCursorSafeToCommit returns false when cursor ledger equals tip", () => {
+  const cursor = `${210n << 32n}-0-0`;
+  assert.equal(isCursorSafeToCommit(cursor, 210, 2), false);
+});
+
+// ---------------------------------------------------------------------------
+// deduplicateEvents
+// ---------------------------------------------------------------------------
+
+function makeRawEvent(id, ledger = 1) {
+  return { id, ledger, txHash: `tx-${id}`, ledgerClosedAt: "2024-01-01T00:00:00Z" };
+}
+
+test("deduplicateEvents returns all events when seenIds is empty", () => {
+  const seenIds = new Set();
+  const events = [makeRawEvent("a"), makeRawEvent("b")];
+  const fresh = deduplicateEvents(events, seenIds);
+  assert.equal(fresh.length, 2);
+  assert.ok(seenIds.has("a") && seenIds.has("b"));
+});
+
+test("deduplicateEvents skips events whose id is already in seenIds", () => {
+  const seenIds = new Set(["a"]);
+  const events = [makeRawEvent("a"), makeRawEvent("b"), makeRawEvent("c")];
+  const fresh = deduplicateEvents(events, seenIds);
+  assert.equal(fresh.length, 2);
+  assert.ok(fresh.every((e) => e.id !== "a"), "event 'a' must not appear");
+  assert.ok(seenIds.has("b") && seenIds.has("c"));
+});
+
+test("deduplicateEvents is idempotent: re-scanning the same events produces no output", () => {
+  const seenIds = new Set(["a", "b"]);
+  const fresh = deduplicateEvents([makeRawEvent("a"), makeRawEvent("b")], seenIds);
+  assert.equal(fresh.length, 0);
+  assert.equal(seenIds.size, 2); // unchanged
+});
+
+test("deduplicateEvents does not grow seenIds when all events are duplicates", () => {
+  const seenIds = new Set(["x"]);
+  deduplicateEvents([makeRawEvent("x")], seenIds);
+  deduplicateEvents([makeRawEvent("x")], seenIds);
+  assert.equal(seenIds.size, 1);
+});
+
+test("deduplicateEvents handles an empty event list", () => {
+  const seenIds = new Set(["existing"]);
+  const fresh = deduplicateEvents([], seenIds);
+  assert.equal(fresh.length, 0);
+  assert.equal(seenIds.size, 1);
+});
+
+test("deduplicateEvents with a reorg: overlapping re-scan only writes new events", () => {
+  // Simulate initial scan: events a, b, c written
+  const seenIds = new Set(["a", "b", "c"]);
+  // Reorg: rescan from earlier ledger returns a, b, c plus a new event d
+  const rescan = [makeRawEvent("a"), makeRawEvent("b"), makeRawEvent("c"), makeRawEvent("d")];
+  const fresh = deduplicateEvents(rescan, seenIds);
+  assert.equal(fresh.length, 1);
+  assert.equal(fresh[0].id, "d");
+  assert.ok(seenIds.has("d"));
+});
+
+// ---------------------------------------------------------------------------
+// loadState / saveState
+// ---------------------------------------------------------------------------
+
+let tmpDir;
+test.before(() => {
+  tmpDir = mkdtempSync(join(tmpdir(), "tributary-test-"));
+});
+test.after(() => {
+  rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test("loadState returns null cursor and empty seenIds when file does not exist", () => {
+  const { cursor, seenIds } = loadState(join(tmpDir, "nonexistent.json"));
+  assert.equal(cursor, null);
+  assert.equal(seenIds.size, 0);
+});
+
+test("loadState returns null cursor and empty seenIds when file is corrupt", () => {
+  const p = join(tmpDir, "corrupt.json");
+  writeFileSync(p, "not json");
+  const { cursor, seenIds } = loadState(p);
+  assert.equal(cursor, null);
+  assert.equal(seenIds.size, 0);
+});
+
+test("saveState and loadState round-trip cursor and seenIds", () => {
+  const p = join(tmpDir, "state.json");
+  const ids = new Set(["ev-1", "ev-2", "ev-3"]);
+  saveState("cursor-abc", ids, p);
+
+  const { cursor, seenIds } = loadState(p);
+  assert.equal(cursor, "cursor-abc");
+  assert.deepEqual([...seenIds].sort(), ["ev-1", "ev-2", "ev-3"]);
+});
+
+test("saveState overwrites existing state cleanly", () => {
+  const p = join(tmpDir, "overwrite.json");
+  saveState("old-cursor", new Set(["old-id"]), p);
+  saveState("new-cursor", new Set(["new-id-1", "new-id-2"]), p);
+
+  const { cursor, seenIds } = loadState(p);
+  assert.equal(cursor, "new-cursor");
+  assert.ok(!seenIds.has("old-id"), "old id must not survive overwrite");
+  assert.ok(seenIds.has("new-id-1") && seenIds.has("new-id-2"));
+});
+
+test("loadState tolerates missing seenIds field (legacy state.json)", () => {
+  const p = join(tmpDir, "legacy.json");
+  // Old format had only { cursor }
+  writeFileSync(p, JSON.stringify({ cursor: "legacy-cursor" }));
+  const { cursor, seenIds } = loadState(p);
+  assert.equal(cursor, "legacy-cursor");
+  assert.equal(seenIds.size, 0);
+});
+
+test("seenIds survives a save/load round-trip with many ids", () => {
+  const p = join(tmpDir, "many-ids.json");
+  const ids = new Set(Array.from({ length: 500 }, (_, i) => `ev-${i}`));
+  saveState("cursor-x", ids, p);
+  const { seenIds } = loadState(p);
+  assert.equal(seenIds.size, 500);
+  assert.ok(seenIds.has("ev-0") && seenIds.has("ev-499"));
   assert.equal(result.value.CONTRACT_ID, 'CC123');
   assert.equal(result.value.RPC_URL, 'https://example.com');
+  assert.equal(result.value.LOG_LEVEL, 'info');
+});
+
+test('validateConfig accepts custom valid LOG_LEVEL and rejects invalid LOG_LEVEL', () => {
+  const validResult = validateConfig({
+    CONTRACT_ID: 'CC123',
+    RPC_URL: 'https://example.com',
+    LOG_LEVEL: 'DEBUG',
+  });
+  assert.equal(validResult.ok, true);
+  assert.equal(validResult.value.LOG_LEVEL, 'debug');
+
+  const invalidResult = validateConfig({
+    CONTRACT_ID: 'CC123',
+    RPC_URL: 'https://example.com',
+    LOG_LEVEL: 'verbose',
+  });
+  assert.equal(invalidResult.ok, false);
+  assert.match(invalidResult.error, /LOG_LEVEL must be one of/);
+});
+
+test('shouldLog respects log level severity threshold', () => {
+  assert.equal(shouldLog('info', 'debug'), false);
+  assert.equal(shouldLog('info', 'info'), true);
+  assert.equal(shouldLog('info', 'warn'), true);
+  assert.equal(shouldLog('info', 'error'), true);
+  assert.equal(shouldLog('warn', 'info'), false);
+  assert.equal(shouldLog('warn', 'warn'), true);
+  assert.equal(shouldLog('debug', 'debug'), true);
+});
+
+test('formatLogEntry formats structured JSON log entry', () => {
+  const raw = formatLogEntry('info', 'Poll completed', {
+    eventsIndexedTotal: 42,
+    scanLagLedgers: 5,
+  });
+  const parsed = JSON.parse(raw);
+  assert.equal(parsed.level, 'info');
+  assert.equal(parsed.message, 'Poll completed');
+  assert.equal(parsed.eventsIndexedTotal, 42);
+  assert.equal(parsed.scanLagLedgers, 5);
+  assert.ok(typeof parsed.timestamp === 'string');
+  assert.ok(!Number.isNaN(Date.parse(parsed.timestamp)));
+});
+
+test('cursorLedger extracts ledger sequence from cursor', () => {
+  // 100 << 32 = 429496729600. Cursor format: "<packed_ledger_seq>-<entry_id>"
+  const packedLedger = (BigInt(100) << 32n).toString();
+  const cursor = `${packedLedger}-0000000001`;
+  assert.equal(cursorLedger(cursor), 100);
+  assert.equal(cursorLedger('invalid'), null);
+  assert.equal(cursorLedger(null), null);
+});
+
+test('calculateScanLag calculates ledger difference accurately', () => {
+  const packedLedger = (BigInt(500) << 32n).toString();
+  const cursor = `${packedLedger}-0000000001`;
+  assert.equal(calculateScanLag(510, cursor), 10);
+  assert.equal(calculateScanLag(500, cursor), 0);
+  assert.equal(calculateScanLag(490, cursor), 0); // clamp to 0 if cursor ahead
+  assert.equal(calculateScanLag(510, 500), 10); // supports numeric cursor ledger
+  assert.equal(calculateScanLag(510, null), null);
+  assert.equal(calculateScanLag(null, cursor), null);
+});
+
+test('createMetricsTracker updates and retrieves metrics state', () => {
+  const tracker = createMetricsTracker();
+  assert.deepEqual(tracker.getMetrics(), {
+    eventsIndexedTotal: 0,
+    eventsIndexedLastPoll: 0,
+    scanLagLedgers: null,
+    errorsTotal: 0,
+  });
+
+  tracker.recordPollSuccess({ eventsIndexed: 15, scanLagLedgers: 3 });
+  assert.equal(tracker.getMetrics().eventsIndexedLastPoll, 15);
+  assert.equal(tracker.getMetrics().eventsIndexedTotal, 15);
+  assert.equal(tracker.getMetrics().scanLagLedgers, 3);
+  assert.equal(tracker.getMetrics().errorsTotal, 0);
+
+  tracker.recordPollSuccess({ eventsIndexed: 10, scanLagLedgers: 1 });
+  assert.equal(tracker.getMetrics().eventsIndexedLastPoll, 10);
+  assert.equal(tracker.getMetrics().eventsIndexedTotal, 25);
+  assert.equal(tracker.getMetrics().scanLagLedgers, 1);
+
+  tracker.recordError();
+  assert.equal(tracker.getMetrics().errorsTotal, 1);
+});
+
+test('parseArgs reads a starting ledger', () => {
+  assert.deepEqual(parseArgs(['--from-ledger', '12345']), {
+    ok: true,
+    value: { fromLedger: 12345 },
+  });
+  assert.deepEqual(parseArgs(['--from-ledger=67890']), {
+    ok: true,
+    value: { fromLedger: 67890 },
+  });
+});
+
+test('parseArgs rejects invalid starting ledgers', () => {
+  for (const value of ['0', '-1', '1.5', 'ledger']) {
+    const result = parseArgs(['--from-ledger', value]);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /positive integer/);
+  }
+});
+
+test('from-ledger overrides a saved cursor for the initial scan', () => {
+  assert.deepEqual(initialScanPosition(12345, '999-1'), {
+    startLedger: 12345,
+  });
+  assert.deepEqual(initialScanPosition(undefined, '999-1'), {
+    cursor: '999-1',
+  });
+});
+
+test('runPollingLoop serializes polls and reschedules after failure', async () => {
+  let releaseFirstPoll;
+  let activePolls = 0;
+  let maxActivePolls = 0;
+  let pollCount = 0;
+  const scheduled = [];
+  const loggerMessages = [];
+
+  const flush = async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
+  const pollFn = async () => {
+    pollCount += 1;
+    activePolls += 1;
+    maxActivePolls = Math.max(maxActivePolls, activePolls);
+
+    try {
+      if (pollCount === 1) {
+        await new Promise((resolve) => {
+          releaseFirstPoll = resolve;
+        });
+      } else if (pollCount === 2) {
+        throw new Error('boom');
+      }
+    } finally {
+      activePolls -= 1;
+    }
+  };
+
+  const schedule = (callback, delay) => {
+    const entry = { callback, delay };
+    scheduled.push(entry);
+    return entry;
+  };
+
+  const logger = (message) => loggerMessages.push(message);
+
+  void runPollingLoop({ pollFn, pollMs: 50, schedule, logger });
+
+  assert.equal(activePolls, 1);
+  assert.equal(maxActivePolls, 1);
+  assert.equal(scheduled.length, 0);
+
+  releaseFirstPoll();
+  await flush();
+
+  assert.equal(activePolls, 0);
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].delay, 50);
+
+  scheduled[0].callback();
+  await flush();
+
+  assert.equal(pollCount, 2);
+  assert.equal(activePolls, 0);
+  assert.deepEqual(loggerMessages, ['boom']);
+  assert.equal(maxActivePolls, 1);
+  assert.equal(scheduled.length, 2);
+
+  scheduled[1].callback();
+  await flush();
+
+  assert.equal(pollCount, 3);
+  assert.equal(activePolls, 0);
+  assert.equal(maxActivePolls, 1);
+  assert.equal(scheduled.length, 3);
+  assert.equal(scheduled[2].delay, 50);
 });
