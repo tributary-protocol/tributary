@@ -95,6 +95,11 @@ describe("i18n persistence", () => {
     expect(readSavedLanguage()).toBe("ja");
   });
 
+  it("reads a saved locale from localStorage (fr)", () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, "fr");
+    expect(readSavedLanguage()).toBe("fr");
+  });
+
   it("persists locale selection directly", () => {
     persistLanguage("vi");
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("vi");

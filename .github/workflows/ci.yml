@@ -49,6 +49,17 @@ jobs:
           header: contract-size
           path: contract-size.md
 
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - run: rustup update stable && rustup target add wasm32v1-none
+      - name: Generate benchmark costs
+        working-directory: contracts/splitter
+        run: cargo test benchmark_costs --profile release-with-debug -- --ignored --nocapture
+      - name: Check metrics
+        run: node scripts/check_metrics.js contracts/splitter/baseline.json contracts/splitter/costs.json
   coverage:
     runs-on: ubuntu-latest
     permissions:
@@ -85,7 +96,7 @@ jobs:
           header: contract-coverage
           path: coverage-summary.md
       - name: Upload lcov report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: contract-coverage-lcov
           path: lcov.info
@@ -103,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: npm install && npm run build
