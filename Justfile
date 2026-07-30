@@ -24,6 +24,22 @@ test:
 	@echo "Running tests..."
 	cargo test
 
+# Prove the money-safety invariants over all valid share vectors (fast tier,
+# bounded amounts). Needs Kani: cargo install --locked kani-verifier && cargo kani setup
+verify:
+	@echo "Proving conservation over bounded amounts..."
+	cargo kani -p tributary-splitter-proofs --harness proof_bounded_ --harness proof_shares_
+
+# Prove the same invariants over every i128 amount at fixed share vectors, and
+# that the rounding is exactly floor. Minutes, not seconds — the nightly tier.
+verify-full:
+	@echo "Proving conservation over the full i128 amount range..."
+	cargo kani -p tributary-splitter-proofs --harness proof_full_ --harness proof_floor_
+
+# Break the arithmetic on purpose and check the proofs catch it
+verify-mutants:
+	sh ./scripts/kani-mutation-check.sh
+
 # Deploy the contract (uses provided script)
 deploy:
 	@echo "Deploying contract..."

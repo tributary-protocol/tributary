@@ -165,6 +165,7 @@ export default function PaySplit({
         <TokenPicker token={token} onChange={setToken} />
       </div>
       {amountError && <p className="note">{amountError}</p>}
+      {trustlineChecking && <p className="note">{t("checkingTrustlines")}</p>}
       {selected && preview.length === selected.recipients.length && (
         <div className="preview">
           <div className="preview-heading">
