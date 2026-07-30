@@ -15,7 +15,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^6.30.4",
+    "react-router-dom": "^7.18.1",
     "tributary-sdk": "file:../sdk"
   },
   "devDependencies": {
