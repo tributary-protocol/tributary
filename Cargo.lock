@@ -1655,23 +1655,10 @@ dependencies = [
  "quote",
  "sha2",
  "soroban-env-common",
- "soroban-spec 27.0.2",
+ "soroban-spec",
  "soroban-spec-rust",
  "stellar-xdr 27.0.0",
  "syn",
-]
-
-[[package]]
-name = "soroban-spec"
-version = "26.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3afb753b6ec3329af9744091ebe9f4c047c8fd1078d333b3f83a598a22bef33"
-dependencies = [
- "base64",
- "sha2",
- "stellar-xdr 26.0.1",
- "thiserror",
- "wasmparser",
 ]
 
 [[package]]
@@ -1697,7 +1684,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "sha2",
- "soroban-spec 27.0.2",
+ "soroban-spec",
  "stellar-xdr 27.0.0",
  "syn",
  "thiserror",
@@ -1721,7 +1708,7 @@ name = "spec-extractor"
 version = "0.1.0"
 dependencies = [
  "serde_json",
- "soroban-spec 26.1.0",
+ "soroban-spec",
  "stellar-xdr 26.0.1",
 ]
 
@@ -1785,8 +1772,6 @@ dependencies = [
  "escape-bytes",
  "ethnum",
  "hex",
- "serde",
- "serde_with",
  "sha2",
  "stellar-strkey 0.0.13",
 ]
