@@ -68,7 +68,7 @@ Early days. The core contract works, is tested and runs on testnet, but it is no
 ## Try it in two minutes
 
 1. Install the [Freighter](https://freighter.app) extension and switch it to Testnet.
-2. Fund your account for free at [friendbot](https://lab.stellar.org/account/fund?$=network$id=testnet).
+2. Fund your account for free at [friendbot](https://lab.stellar.org/account/fund?$=network$id=testnet) (other ways to fund: [docs/testnet-funding.md](docs/testnet-funding.md)).
 3. Open [tributary-omega.vercel.app](https://tributary-omega.vercel.app), connect, and create a split from the Create tab.
 4. Pay through it from the Pay tab and watch both balances land in one transaction.
 
@@ -107,6 +107,8 @@ examples/node-create-and-pay Node script for the create-then-pay flow (no wallet
 [docs/architecture.md](docs/architecture.md) covers the storage layout, money paths, error codes and events in detail.
 
 [docs/glossary.md](docs/glossary.md) defines core terms like split, share, controller, escrow and dust.
+
+[docs/testnet-funding.md](docs/testnet-funding.md) covers funding a testnet account with friendbot — from the browser, the Stellar CLI or plain HTTP — including funding the recipient accounts a split pays.
 
 [docs/preview-payout.md](docs/preview-payout.md) shows how to preview a payout with `preview_payout` before paying.
 
