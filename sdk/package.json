@@ -27,7 +27,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "node init && tsc",
     "test": "node --test dist/index.test.js",
     "prepublishOnly": "npm run build"
   },

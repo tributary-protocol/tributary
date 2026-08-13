@@ -4,7 +4,7 @@
   "description": "Polls splitter contract events into a local ndjson log",
   "scripts": {
     "test": "node --test",
-    "start": "node index.mjs",
+    "start": "node init && node index.mjs",
     "replay": "node replay-command.mjs"
   },
   "license": "Apache-2.0",
