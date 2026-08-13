@@ -5,8 +5,8 @@
   "description": "An embeddable donation widget for Tributary splits",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "node init && vite",
+    "build": "node init && tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
