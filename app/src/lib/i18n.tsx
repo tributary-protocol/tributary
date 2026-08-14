@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type Language = "en" | "vi" | "it" | "tr" | "ru" | "ja" | "fr";
+export type Language = "en" | "vi" | "it" | "tr" | "ru" | "ja" | "fr" | "ko";
 
 export const LANGUAGE_STORAGE_KEY = "tributary-lang";
 
@@ -10,7 +10,7 @@ export function readSavedLanguage(): Language {
   }
 
   const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return saved === "vi" || saved === "it" || saved === "tr" || saved === "ru" || saved === "ja" || saved === "fr" || saved === "en" ? saved : "en";
+  return saved === "vi" || saved === "it" || saved === "tr" || saved === "ru" || saved === "ja" || saved === "fr" || saved === "ko" || saved === "en" ? saved : "en";
 }
 
 export function persistLanguage(lang: Language) {
@@ -787,6 +787,123 @@ const translations = {
     estimatedLockFee: "Frais de verrouillage estimés",
     // Footer
     contractOnTestnet: "Contrat sur testnet",
+  },
+  ko: {
+    // Header & Navigation
+    connectWallet: "Freighter 연결",
+    github: "GitHub",
+    testnet: "테스트넷",
+    // Intro
+    introTitle: "Stellar에서 결제를 분할하세요",
+    introDesc: "한 번의 트랜잭션으로 모든 수취인이 각자의 몫을 받습니다. 테스트넷에서 실행 중입니다.",
+    // ActionPanel tabs
+    tabCreate: "생성",
+    tabPay: "결제",
+    tabEscrow: "에스크로",
+    tabStreams: "스트림",
+    tabManage: "관리",
+    // CreateSplit
+    createTitle: "분할 생성",
+    createEditableLabel: "이 분할을 나중에 수정할 수 있습니다 (선택을 해제하면 영구적으로 잠깁니다)",
+    createButton: "분할 생성",
+    waitingForSignature: "서명 대기 중…",
+    connectWalletFirst: "먼저 지갑을 연결하세요.",
+    splitCreated: "분할 #{id}이(가) 생성되었습니다.",
+    contractRejectedSplit: "컨트랙트가 분할을 거부했습니다.",
+    // RecipientEditor
+    sharesTotalError: "지분의 합계는 100%여야 합니다.",
+    sharesTotalWarn: "지분 합계는 10,000 bps(100%)여야 합니다. 현재 {total} bps입니다.",
+    sharesGreaterZeroError: "지분은 0보다 커야 합니다.",
+    recipientRequiredError: "모든 수취인에게 주소 또는 분할 ID가 필요합니다.",
+    recipientFormatError: "수취인 주소는 G…로 시작하는 계정 키여야 합니다.",
+    kindAddress: "주소",
+    kindSplit: "분할",
+    placeholderAddress: "G… 수취인 주소",
+    placeholderSplit: "분할 ID",
+    addRecipient: "수취인 추가",
+    importCsv: "CSV 가져오기",
+    pctOfTotal: "전체의 {pct}%",
+    useBasisPoints: "베이시스 포인트 사용",
+    bpsOfTotal: "10,000 bps 중 {bps}",
+    unitBpsTitle: "베이시스 포인트 (100 bps = 1%)",
+    unitPctTitle: "전체 결제액에서 차지하는 비율입니다. 온체인에는 베이시스 포인트로 저장됩니다.",
+    // PaySplit
+    payTitle: "분할을 통해 결제",
+    chooseSplit: "분할 선택",
+    recipientsCount: "수취인 {count}명",
+    amount: "금액",
+    paySuccess: "분할 #{id}을(를) 통해 {amount} {token}을(를) 결제했습니다.",
+    payFailed: "결제에 실패했습니다.",
+    payButton: "결제",
+    pickSplitAndAmount: "분할과 금액을 선택하세요.",
+    trustlineWarningTitle: "{token}(으)로 결제할 수 없습니다",
+    trustlineWarningItem: "{address}에 {token} 트러스트라인이 없습니다. 이 분할을 {token}(으)로 결제하려면 먼저 트러스트라인을 추가해야 합니다.",
+    trustlineWarningHint: "모든 수취인이 이 토큰을 받을 수 있을 때까지 결제가 차단됩니다.",
+    trustlineNoticeTitle: "트러스트라인 확인이 완료되지 않았습니다",
+    trustlineNoticeHint: "일부 수취인의 트러스트라인을 확인하지 못했습니다. 해당 수취인이 이 토큰을 받을 수 없으면 결제가 실패할 수 있습니다.",
+    // EscrowCard
+    escrowTitle: "에스크로",
+    escrowDesc: "지금 분할에 자금을 예치해 두고, 나중에 모두에게 지급하세요.",
+    pending: "대기 중: {amount} {token}",
+    depositButton: "예치",
+    distributeButton: "분배",
+    distributeSuccess: "모든 수취인에게 {amount} {token}을(를) 분배했습니다.",
+    distributeFailed: "분배할 자금이 없습니다.",
+    depositSuccess: "{amount} {token}을(를) 예치했습니다.",
+    depositFailed: "예치에 실패했습니다.",
+    pickSplit: "분할을 선택하세요.",
+    working: "처리 중…",
+    // ManageSplit
+    manageTitle: "내 분할 관리",
+    chooseSplitControl: "제어 중인 분할 선택",
+    updateButton: "분할 업데이트",
+    placeholderController: "G… 새 제어자 주소",
+    transferButton: "이전",
+    lockButton: "영구 잠금",
+    confirmLockButton: "잠금 확인",
+    updateSuccess: "분할이 업데이트되었습니다.",
+    updateFailed: "업데이트가 거부되었습니다.",
+    transferSuccess: "제어 권한이 이전되었습니다.",
+    transferFailed: "이전이 거부되었습니다.",
+    lockConfirmPrompt: "잠금은 되돌릴 수 없습니다. 확인하려면 다시 누르세요.",
+    lockSuccess: "분할이 영구적으로 잠겼습니다.",
+    lockFailed: "잠금이 거부되었습니다.",
+    controllerFormatError: "제어자는 G…로 시작하는 계정 키여야 합니다.",
+    // SplitList & Detail
+    loadingSplits: "분할을 불러오는 중…",
+    noSplitsOnContract: "이 컨트랙트에는 아직 분할이 없습니다.",
+    noSplitsPrompt: "테스트넷에서 Freighter를 연결한 뒤 생성 탭에서 첫 번째 분할을 등록하세요. 테스트넷 XLM은 friendbot에서 무료로 받을 수 있으므로 시험해 보는 데 비용이 들지 않습니다.",
+    recentSplits: "최근 분할",
+    copy: "복사",
+    yours: "내 것",
+    mutable: "수정 가능",
+    locked: "잠김",
+    nestedSplit: "분할 #{id}",
+    detailEscrow: "에스크로",
+    detailController: "제어자: {controller}",
+    detailHistoryTitle: "결제 및 분배 내역",
+    detailHistoryEmpty: "아직 결제나 분배 내역이 없습니다.",
+    detailHistoryLoading: "내역을 불러오는 중…",
+    // Activity
+    recentActivity: "최근 활동",
+    exportCsv: "CSV 내보내기",
+    activityCreated: "생성됨",
+    activityPaid: "결제됨",
+    activityUpdated: "업데이트됨",
+    activityDeposit: "예치",
+    activityDistributed: "분배됨",
+    activityControlMoved: "제어 권한 이전",
+    activityTx: "트랜잭션",
+    activitySplitNum: "분할 #{id}",
+    // FeeHint
+    estimatedFee: "예상 수수료",
+    estimatedDepositFee: "예상 예치 수수료",
+    estimatedDistributeFee: "예상 분배 수수료",
+    estimatedUpdateFee: "예상 업데이트 수수료",
+    estimatedTransferFee: "예상 이전 수수료",
+    estimatedLockFee: "예상 잠금 수수료",
+    // Footer
+    contractOnTestnet: "테스트넷의 컨트랙트",
   },
 };
 
