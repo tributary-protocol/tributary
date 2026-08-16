@@ -5,8 +5,11 @@ test_snapshots/
 .stellar/
 .env
 .env.*
+!.env.example
 
 .vercel
 indexer/events.ndjson
 indexer/state.json
+indexer/dist/
+indexer/.env
 *.tsbuildinfo

@@ -29,6 +29,24 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
+## Changing the share math
+
+`contracts/splitter/src/math.rs` carries the arithmetic that decides who gets
+paid what, and it is under machine-checked proof — the same file is compiled by
+`contracts/splitter-proofs`, where Kani proves conservation, dust correctness
+and exact-floor rounding over bounded input domains. If you touch it, run the
+proofs:
+
+```
+cargo install --locked kani-verifier && cargo kani setup   # one-off
+just verify          # ~1.5 min, runs on every PR that touches contracts/
+just verify-full     # ~6 min, runs nightly in CI
+```
+
+`docs/formal-verification.md` records what is proven, under which bounds, and
+what remains covered only by tests. Please keep it accurate when the harnesses
+change — a stale bounds table is worse than none.
+
 ## What a good change looks like
 
 - One concern per pull request. Small and reviewable beats big and impressive.

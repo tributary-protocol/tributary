@@ -7,6 +7,8 @@
 
 Payment splitting on Stellar. Live at [tributary-omega.vercel.app](https://tributary-omega.vercel.app).
 
+![Tributary dashboard showing the Create tab with recipient inputs and the split list below](assets/dashboard.svg)
+
 A split is a routing rule stored on-chain: a list of recipient addresses and the share each one gets. Once a split exists, anyone can push a payment through it and every recipient gets paid in the same transaction.
 
 Things you can do with one transfer:
@@ -35,6 +37,8 @@ Per-recipient amounts are rounded down and the leftover dust goes to the last re
 
 ## Contract API
 
+The table below summarizes each call; see [docs/api-reference.md](docs/api-reference.md) for the full per-function reference with parameters, return types, errors, events and auth.
+
 | Function | Description |
 | --- | --- |
 | `create_split(creator, recipients, shares, controller)` | Registers a split and returns its id |
@@ -42,6 +46,7 @@ Per-recipient amounts are rounded down and the leftover dust goes to the last re
 | `pay_many(from, ids, amounts, token)` | Pays several splits in one transaction |
 | `deposit(from, id, token, amount)` | Credits funds to the split without paying out |
 | `distribute(id, token)` | Pays the credited balance out to all recipients |
+| `close_split(id)` | Controller only. Closes an empty split and reclaims storage |
 | `preview_payout(id, amount)` | Per-recipient amounts a payment would produce |
 | `balance(id, token)` | Credited amount waiting to be distributed |
 | `update_split(id, recipients, shares)` | Controller only. Replaces the routing table |
@@ -63,7 +68,7 @@ Early days. The core contract works, is tested and runs on testnet, but it is no
 ## Try it in two minutes
 
 1. Install the [Freighter](https://freighter.app) extension and switch it to Testnet.
-2. Fund your account for free at [friendbot](https://lab.stellar.org/account/fund?$=network$id=testnet).
+2. Fund your account for free at [friendbot](https://lab.stellar.org/account/fund?$=network$id=testnet) (other ways to fund: [docs/testnet-funding.md](docs/testnet-funding.md)).
 3. Open [tributary-omega.vercel.app](https://tributary-omega.vercel.app), connect, and create a split from the Create tab.
 4. Pay through it from the Pay tab and watch both balances land in one transaction.
 
@@ -76,12 +81,18 @@ cargo test
 cargo build --release --target wasm32v1-none -p tributary-splitter
 ```
 
+To see the create-then-pay flow end to end without a browser wallet, run the
+standalone Node example at
+[examples/node-create-and-pay](examples/node-create-and-pay), which creates a
+split and pays through it on testnet using `tributary-sdk` directly. `scripts/demo.sh` does the same walkthrough with the Stellar CLI instead.
+
 ## Layout
 
 ```
-contracts/splitter   core splitting contract
-sdk                  TypeScript client generated from the contract spec
-app                  web dashboard (Vite + React, Freighter wallet)
+contracts/splitter          core splitting contract
+sdk                          TypeScript client generated from the contract spec
+app                          web dashboard (Vite + React, Freighter wallet)
+examples/node-create-and-pay Node script for the create-then-pay flow (no wallet needed)
 ```
 
 ## Roadmap
@@ -96,6 +107,15 @@ app                  web dashboard (Vite + React, Freighter wallet)
 [docs/architecture.md](docs/architecture.md) covers the storage layout, money paths, error codes and events in detail.
 
 [docs/glossary.md](docs/glossary.md) defines core terms like split, share, controller, escrow and dust.
+
+[docs/testnet-funding.md](docs/testnet-funding.md) covers funding a testnet account with friendbot — from the browser, the Stellar CLI or plain HTTP — including funding the recipient accounts a split pays.
+
+[docs/preview-payout.md](docs/preview-payout.md) shows how to preview a payout with `preview_payout` before paying.
+
+[docs/integrations.md](docs/integrations.md#distributing-a-two-level-tree) includes an end-to-end nested split example and shows the multi-call distribution order.
+
+[docs/tutorial-referrer-pool.md](docs/tutorial-referrer-pool.md) walks through building a marketplace referrer pool with nested splits end to end.
+[docs/formal-verification.md](docs/formal-verification.md) records the conservation invariants proven with Kani, the bounds they hold under, and what is still covered only by tests.
 
 ## Contributing
 

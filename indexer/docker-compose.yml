@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tributary
+      POSTGRES_USER: tributary
+      POSTGRES_PASSWORD: tributary
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tributary"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  indexer:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://tributary:tributary@postgres:5432/tributary
+      RPC_URL: https://soroban-testnet.stellar.org
+      CONTRACT_ID: CCZXVZUQIZT673QF6ZGLI5AJLEPWUFWVYOPIOJNLNIOO5NI27V4JGJUU
+      POLL_MS: "10000"
+      RECONCILE_INTERVAL_MS: "60000"
+      RECONCILIATION_WEBHOOK_URL: ""
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

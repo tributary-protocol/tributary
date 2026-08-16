@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   readClient,
   walletClient,
@@ -11,6 +11,7 @@ import {
 } from "../lib/tributary";
 import { useTranslation } from "../lib/i18n";
 import TokenPicker from "./TokenPicker";
+import FeeHint from "./FeeHint";
 
 interface TokenBalance {
   contract: string;
@@ -21,9 +22,11 @@ interface TokenBalance {
 export default function EscrowCard({
   wallet,
   splits,
+  selectedSplitId,
 }: {
   wallet: string | null;
   splits: SplitView[];
+  selectedSplitId?: string;
 }) {
   const { t } = useTranslation();
   const [splitId, setSplitId] = useState("");
@@ -35,7 +38,13 @@ export default function EscrowCard({
   const [distributing, setDistributing] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function loadBalances(id: string) {
+  useEffect(() => {
+    if (selectedSplitId !== undefined) {
+      setSplitId(selectedSplitId);
+    }
+  }, [selectedSplitId]);
+
+  async function loadPending(id: string) {
     if (id === "") {
       setBalances([]);
       setLoadError(null);
@@ -73,7 +82,29 @@ export default function EscrowCard({
     loadBalances(splitId);
   }, [splitId]);
 
-  async function distribute(contract: string, code: string) {
+  const depositFee = useMemo(() => {
+    if (!wallet || splitId === "" || !amount || parseFloat(amount) <= 0) {
+      return null;
+    }
+    return () =>
+      walletClient(wallet).deposit({
+        from: wallet,
+        id: BigInt(splitId),
+        token: token.contract,
+        amount: toStroops(amount),
+      });
+  }, [wallet, splitId, amount, token]);
+
+  const distributeFee = useMemo(() => {
+    if (!wallet || splitId === "" || !pending) return null;
+    return () =>
+      walletClient(wallet).distribute({
+        id: BigInt(splitId),
+        token: token.contract,
+      });
+  }, [wallet, splitId, token, pending]);
+
+  async function distribute() {
     if (!wallet) {
       setMessage(t("connectWalletFirst"));
       return;
@@ -184,9 +215,20 @@ export default function EscrowCard({
         />
         <TokenPicker token={token} onChange={setToken} />
       </div>
+      <FeeHint assemble={depositFee} labelKey="estimatedDepositFee" />
+      <FeeHint assemble={distributeFee} labelKey="estimatedDistributeFee" />
       <div className="row">
         <button disabled={busy} onClick={deposit}>
+          {busy && <span className="btn-spinner" />}
           {busy ? t("working") : t("depositButton")}
+        </button>
+        <button
+          className="ghost"
+          disabled={busy || !pending}
+          onClick={distribute}
+        >
+          {busy && <span className="btn-spinner" />}
+          {busy ? t("working") : t("distributeButton")}
         </button>
       </div>
       {message && <p className="note">{message}</p>}

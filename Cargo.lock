@@ -1417,9 +1417,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.150"
+version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
+checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
  "itoa",
  "memchr",
@@ -1512,9 +1512,9 @@ checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 
 [[package]]
 name = "soroban-builtin-sdk-macros"
-version = "27.0.0"
+version = "27.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d769030e3b2c27873e9be4931decbbe79787b943d5b30e31f8c395eae83144b8"
+checksum = "b77bc93d930032c487cb1506b6ed166b2af49db76d52678ec4887ac621ecce01"
 dependencies = [
  "itertools",
  "proc-macro2",
@@ -1524,9 +1524,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-env-common"
-version = "27.0.0"
+version = "27.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aa50d998c0baafcc6078cb94f5228040c7719b1608c15debc3fc78365dc22f5"
+checksum = "6b22e9981cdd444f3aa6734bc58d76195bf7eca3ccf1dd432b875af5d02da068"
 dependencies = [
  "arbitrary",
  "crate-git-revision 0.0.6",
@@ -1537,15 +1537,15 @@ dependencies = [
  "soroban-env-macros",
  "soroban-wasmi",
  "static_assertions",
- "stellar-xdr",
+ "stellar-xdr 27.0.0",
  "wasmparser",
 ]
 
 [[package]]
 name = "soroban-env-guest"
-version = "27.0.0"
+version = "27.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fde1064f5e92dbcc8018ecc8e92728bf5bbff0236abaf792c6858367a6853415"
+checksum = "2b6072f99ca6bf8e8d5b04e05d083dac785e5357d9c0f36a6658f819c2fd7d67"
 dependencies = [
  "soroban-env-common",
  "static_assertions",
@@ -1553,9 +1553,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-env-host"
-version = "27.0.0"
+version = "27.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f47762a1b75b9ccd07558f28e1a0289ca6adec56810c581cde5cf16e329e00b9"
+checksum = "2c06afd7c75ce150ce53e4d77a77645b18e3fb61856a0ddc42bfcecdc39fa3b9"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -1590,24 +1590,24 @@ dependencies = [
 
 [[package]]
 name = "soroban-env-macros"
-version = "27.0.0"
+version = "27.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc04b813a9e32456b37875fc41cdb05912a9e947000b9414b7985bffe07a889a"
+checksum = "647811bdd28a3ec40296987f6635781e5e1141c8f5affbbd53ba12b6295b7bb6"
 dependencies = [
  "itertools",
  "proc-macro2",
  "quote",
  "serde",
  "serde_json",
- "stellar-xdr",
+ "stellar-xdr 27.0.0",
  "syn",
 ]
 
 [[package]]
 name = "soroban-ledger-snapshot"
-version = "27.0.0"
+version = "27.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e4bf41f85da648dca4153ca5ed41411658d2029e15d9ba693fdd2e3e5dbe05d"
+checksum = "27ea48b5d5e22c0cbaa370f813111016c9f5a8a6632edb0684c72be6531c4d3a"
 dependencies = [
  "serde",
  "serde_json",
@@ -1619,9 +1619,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-sdk"
-version = "27.0.0"
+version = "27.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5636f9d62dd0cc6d23f08f775aa60f712ec596e5761f6911aee154337d401bf"
+checksum = "6cfa78af0110f0830d3af9db0361b6cdb50507846cedb8725189318134218b80"
 dependencies = [
  "arbitrary",
  "bytes-lit",
@@ -1643,9 +1643,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-sdk-macros"
-version = "27.0.0"
+version = "27.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7c9f001d91196d9cd659634f9113f75609819204aef5fae27b4ab845cdfc741"
+checksum = "3db611bd0acfe5fd348ffdcef16c84090c6ab051f3e325b5ac049a73044a7ee6"
 dependencies = [
  "darling 0.20.11",
  "heck",
@@ -1655,37 +1655,50 @@ dependencies = [
  "quote",
  "sha2",
  "soroban-env-common",
- "soroban-spec",
+ "soroban-spec 27.0.2",
  "soroban-spec-rust",
- "stellar-xdr",
+ "stellar-xdr 27.0.0",
  "syn",
 ]
 
 [[package]]
 name = "soroban-spec"
-version = "27.0.0"
+version = "26.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca1e22ce713871c6f9d21a321051b58e53080629b6a5be1132cf11f42cca4d10"
+checksum = "e3afb753b6ec3329af9744091ebe9f4c047c8fd1078d333b3f83a598a22bef33"
 dependencies = [
  "base64",
  "sha2",
- "stellar-xdr",
+ "stellar-xdr 26.0.1",
+ "thiserror",
+ "wasmparser",
+]
+
+[[package]]
+name = "soroban-spec"
+version = "27.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8061fe31998fe9fba8fcd7175b3e3ca914a6f6e3bf829fe91fdf7f930b1251d9"
+dependencies = [
+ "base64",
+ "sha2",
+ "stellar-xdr 27.0.0",
  "thiserror",
  "wasmparser",
 ]
 
 [[package]]
 name = "soroban-spec-rust"
-version = "27.0.0"
+version = "27.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89fb158f79ec527e46a5d5162f11c4269e17748e6b69391cdf648133d76cfead"
+checksum = "2180cddacf3023a439827cb35c0e391ec413b1328173fe7c8c2743fc67b3af9e"
 dependencies = [
  "prettyplease",
  "proc-macro2",
  "quote",
  "sha2",
- "soroban-spec",
- "stellar-xdr",
+ "soroban-spec 27.0.2",
+ "stellar-xdr 27.0.0",
  "syn",
  "thiserror",
 ]
@@ -1701,6 +1714,15 @@ dependencies = [
  "wasmi_arena",
  "wasmi_core",
  "wasmparser-nostd",
+]
+
+[[package]]
+name = "spec-extractor"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "soroban-spec 26.1.0",
+ "stellar-xdr 26.0.1",
 ]
 
 [[package]]
@@ -1750,6 +1772,23 @@ dependencies = [
  "crate-git-revision 0.0.6",
  "data-encoding",
  "heapless",
+]
+
+[[package]]
+name = "stellar-xdr"
+version = "26.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea6e29c7e1f071c2767916460d006668197843d5d93f0ec8893a26f72a14f595"
+dependencies = [
+ "cfg_eval",
+ "crate-git-revision 0.0.6",
+ "escape-bytes",
+ "ethnum",
+ "hex",
+ "serde",
+ "serde_with",
+ "sha2",
+ "stellar-strkey 0.0.13",
 ]
 
 [[package]]
@@ -1879,6 +1918,10 @@ dependencies = [
  "proptest",
  "soroban-sdk",
 ]
+
+[[package]]
+name = "tributary-splitter-proofs"
+version = "0.1.0"
 
 [[package]]
 name = "typenum"
