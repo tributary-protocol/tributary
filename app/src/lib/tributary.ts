@@ -122,6 +122,11 @@ export async function fetchMineIds(creator: string): Promise<Set<string>> {
   return new Set(result.map((id: bigint) => String(id)));
 }
 
+export async function fetchHeldTokens(id: bigint): Promise<string[]> {
+  const { result } = await readClient().held_tokens({ id });
+  return result;
+}
+
 export async function previewPayout(
   id: bigint,
   amount: bigint,

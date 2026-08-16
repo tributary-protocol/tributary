@@ -192,14 +192,14 @@ export {
   createMetricsTracker,
 };
 
-function loadCursor() {
-  if (!existsSync(STATE)) return null;
-  return JSON.parse(readFileSync(STATE, "utf8")).cursor ?? null;
-}
+  function loadCursor() {
+    if (!existsSync(STATE)) return null;
+    return JSON.parse(readFileSync(STATE, "utf8")).cursor ?? null;
+  }
 
-function saveCursor(cursor) {
-  writeFileSync(STATE, JSON.stringify({ cursor }));
-}
+  function saveCursor(cursor) {
+    writeFileSync(STATE, JSON.stringify({ cursor }));
+  }
 
 let isPolling = false;
 let shutdownRequested = false;
