@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
   I18nProvider,
   LANGUAGE_STORAGE_KEY,
@@ -54,6 +54,7 @@ describe("i18n persistence", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    cleanup();
   });
 
   it("defaults to English when no saved locale exists", () => {
@@ -100,6 +101,11 @@ describe("i18n persistence", () => {
     expect(readSavedLanguage()).toBe("fr");
   });
 
+  it("reads a saved locale from localStorage (zh)", () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, "zh");
+    expect(readSavedLanguage()).toBe("zh");
+  });
+
   it("persists locale selection directly", () => {
     persistLanguage("vi");
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("vi");
@@ -136,5 +142,17 @@ describe("i18n persistence", () => {
 
     expect(select.value).toBe("ja");
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("ja");
+  });
+
+  it("renders zh translation correctly", () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, "zh");
+    render(
+      <I18nProvider>
+        <TestTranslationConsumer />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("language").textContent).toBe("zh");
+    expect(screen.getByTestId("translation").textContent).toBe("连接 Freighter");
   });
 });

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type Language = "en" | "vi" | "it" | "tr" | "ru" | "ja" | "fr";
+export type Language = "en" | "vi" | "it" | "tr" | "ru" | "ja" | "fr" | "zh";
 
 export const LANGUAGE_STORAGE_KEY = "tributary-lang";
 
@@ -10,7 +10,7 @@ export function readSavedLanguage(): Language {
   }
 
   const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return saved === "vi" || saved === "it" || saved === "tr" || saved === "ru" || saved === "ja" || saved === "fr" || saved === "en" ? saved : "en";
+  return saved === "vi" || saved === "it" || saved === "tr" || saved === "ru" || saved === "ja" || saved === "fr" || saved === "zh" || saved === "en" ? saved : "en";
 }
 
 export function persistLanguage(lang: Language) {
@@ -787,6 +787,123 @@ const translations = {
     estimatedLockFee: "Frais de verrouillage estimés",
     // Footer
     contractOnTestnet: "Contrat sur testnet",
+  },
+  zh: {
+    // Header & Navigation
+    connectWallet: "连接 Freighter",
+    github: "GitHub",
+    testnet: "测试网",
+    // Intro
+    introTitle: "在 Stellar 上拆分付款",
+    introDesc: "一笔交易入账，每个收款人按其份额获得付款。运行在测试网上。",
+    // ActionPanel tabs
+    tabCreate: "创建",
+    tabPay: "付款",
+    tabEscrow: "托管",
+    tabStreams: "流式付款",
+    tabManage: "管理",
+    // CreateSplit
+    createTitle: "创建拆分",
+    createEditableLabel: "之后我还可以编辑此拆分（取消勾选将永久锁定）",
+    createButton: "创建拆分",
+    waitingForSignature: "等待签名…",
+    connectWalletFirst: "请先连接您的钱包。",
+    splitCreated: "拆分 #{id} 已创建。",
+    contractRejectedSplit: "合约拒绝了该拆分。",
+    // RecipientEditor
+    sharesTotalError: "份额合计必须等于 100%。",
+    sharesTotalWarn: "总份额必须等于 10,000 bps（100%）。当前为 {total} bps。",
+    sharesGreaterZeroError: "份额必须大于零。",
+    recipientRequiredError: "每个收款人都需要地址或拆分 ID。",
+    recipientFormatError: "收款人地址必须是 G… 开头的账户密钥。",
+    kindAddress: "地址",
+    kindSplit: "拆分",
+    placeholderAddress: "G… 收款人地址",
+    placeholderSplit: "拆分 ID",
+    addRecipient: "添加收款人",
+    importCsv: "导入 CSV",
+    pctOfTotal: "{pct}% / 100%",
+    useBasisPoints: "使用基点（bps）",
+    bpsOfTotal: "{bps} / 10,000 bps",
+    unitBpsTitle: "基点（100 bps = 1%）",
+    unitPctTitle: "占总付款的百分比。在链上以基点形式存储。",
+    // PaySplit
+    payTitle: "通过拆分付款",
+    chooseSplit: "选择拆分",
+    recipientsCount: "{count} 位收款人",
+    amount: "金额",
+    paySuccess: "已通过拆分 #{id} 支付 {amount} {token}。",
+    payFailed: "付款失败。",
+    payButton: "付款",
+    pickSplitAndAmount: "请选择拆分和金额。",
+    trustlineWarningTitle: "无法以 {token} 付款",
+    trustlineWarningItem: "{address} 没有 {token} 的信任线。必须先添加，此拆分才能以 {token} 付款。",
+    trustlineWarningHint: "在所有收款人都可以接收此代币之前，付款将被阻止。",
+    trustlineNoticeTitle: "信任线检查无法完成",
+    trustlineNoticeHint: "无法验证部分收款人的信任线。如果他们无法接收此代币，付款可能会失败。",
+    // EscrowCard
+    escrowTitle: "托管",
+    escrowDesc: "现在将资金存入拆分，稍后再向所有人付款。",
+    pending: "待处理：{amount} {token}",
+    depositButton: "存入",
+    distributeButton: "分发",
+    distributeSuccess: "已向所有收款人分发 {amount} {token}。",
+    distributeFailed: "没有可分发的内容。",
+    depositSuccess: "已存入 {amount} {token}。",
+    depositFailed: "存入失败。",
+    pickSplit: "请选择拆分。",
+    working: "处理中…",
+    // ManageSplit
+    manageTitle: "管理您的拆分",
+    chooseSplitControl: "选择您控制的拆分",
+    updateButton: "更新拆分",
+    placeholderController: "G… 新控制方",
+    transferButton: "转让",
+    lockButton: "永久锁定",
+    confirmLockButton: "确认锁定",
+    updateSuccess: "拆分已更新。",
+    updateFailed: "更新被拒绝。",
+    transferSuccess: "控制权已转让。",
+    transferFailed: "转让被拒绝。",
+    lockConfirmPrompt: "锁定是永久性的。再次点击以确认。",
+    lockSuccess: "拆分已永久锁定。",
+    lockFailed: "锁定被拒绝。",
+    controllerFormatError: "控制方必须是 G… 开头的账户密钥。",
+    // SplitList & Detail
+    loadingSplits: "正在加载拆分…",
+    noSplitsOnContract: "此合约上还没有拆分。",
+    noSplitsPrompt: "在测试网上连接 Freighter，打开“创建”标签页并注册第一个拆分。测试网 XLM 可通过 friendbot 免费获取，因此试用无需任何成本。",
+    recentSplits: "最近的拆分",
+    copy: "复制",
+    yours: "您的",
+    mutable: "可编辑",
+    locked: "已锁定",
+    nestedSplit: "拆分 #{id}",
+    detailEscrow: "托管",
+    detailController: "控制方：{controller}",
+    detailHistoryTitle: "付款与分发历史",
+    detailHistoryEmpty: "暂无付款或分发记录。",
+    detailHistoryLoading: "正在加载历史…",
+    // Activity
+    recentActivity: "最近活动",
+    exportCsv: "导出 CSV",
+    activityCreated: "已创建",
+    activityPaid: "已付款",
+    activityUpdated: "已更新",
+    activityDeposit: "存入",
+    activityDistributed: "已分发",
+    activityControlMoved: "控制权已转让",
+    activityTx: "交易",
+    activitySplitNum: "拆分 #{id}",
+    // FeeHint
+    estimatedFee: "预估费用",
+    estimatedDepositFee: "预估存入费用",
+    estimatedDistributeFee: "预估分发费用",
+    estimatedUpdateFee: "预估更新费用",
+    estimatedTransferFee: "预估转让费用",
+    estimatedLockFee: "预估锁定费用",
+    // Footer
+    contractOnTestnet: "测试网上的合约",
   },
 };
 
