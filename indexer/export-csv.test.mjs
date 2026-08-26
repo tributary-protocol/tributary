@@ -1,0 +1,1 @@
+import{test}from'node:test';import{execFileSync}from'node:child_process';import{fileURLtoPath}from'node:url';test('csv',()=>{const o=execFileSync(process.execPath,[fileURLToPath(new URL('./export-csv.mjs',import.meta.url)),fileURLToPath(new URL('./fix.ndjson',import.meta.url))]).toString();if(o!=='at,ledger,type,split,amount,token,creator,txHash\n',,,,,,,,\n')throw Error(1)});
