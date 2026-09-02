@@ -130,6 +130,15 @@ export async function previewPayout(
   return result.isErr() ? [] : [...result.unwrap()];
 }
 
+export async function previewPayoutDeep(
+  id: bigint,
+  amount: bigint,
+): Promise<Array<{ address: string; amount: bigint }>> {
+  const { result } = await readClient().preview_payout_deep({ id, amount });
+  if (result.isErr()) return [];
+  return result.unwrap().map(([address, amt]) => ({ address, amount: amt }));
+}
+
 export interface ActivityItem {
   eventId: string;
   type: string;

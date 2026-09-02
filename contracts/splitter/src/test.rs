@@ -2226,3 +2226,307 @@ fn splits_of_paged_lands_exactly_on_last_item() {
     let page = s.client.splits_of_paged(&creator, &2, &1);
     assert_eq!(page, vec![&s.env, id2]);
 }
+// preview_payout_deep tests  (#265)
+// ---------------------------------------------------------------------------
+
+// Helper: collect the amounts from a deep preview into a parallel vec keyed
+// by address so individual assertions can look up by address rather than by
+// position.
+fn find_amount(_env: &Env, entries: &soroban_sdk::Vec<(Address, i128)>, target: &Address) -> i128 {
+    for (addr, amt) in entries.iter() {
+        if addr == *target {
+            return amt;
+        }
+    }
+    panic!("address not found in deep preview");
+}
+
+#[test]
+fn deep_preview_flat_split_matches_shallow_preview() {
+    // A split with no nested children should return the same numbers as
+    // preview_payout, just paired with addresses.
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let c = Address::generate(&s.env);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b), acct(&c)],
+        &vec![&s.env, 5_000, 3_000, 2_000],
+        &None,
+    );
+
+    let shallow = s.client.preview_payout(&id, &1_000);
+    let deep = s.client.preview_payout_deep(&id, &1_000);
+
+    assert_eq!(deep.len(), 3);
+    assert_eq!(find_amount(&s.env, &deep, &a), shallow.get_unchecked(0));
+    assert_eq!(find_amount(&s.env, &deep, &b), shallow.get_unchecked(1));
+    assert_eq!(find_amount(&s.env, &deep, &c), shallow.get_unchecked(2));
+}
+
+#[test]
+fn deep_preview_two_level_tree() {
+    // parent: direct(60 %) + child(40 %)
+    // child:  leaf_a(50 %) + leaf_b(50 %)
+    // 1_000 in → direct gets 600, leaf_a gets 200, leaf_b gets 200
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf_a = Address::generate(&s.env);
+    let leaf_b = Address::generate(&s.env);
+    let direct = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 1_000);
+
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf_a), acct(&leaf_b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&direct), Recipient::Split(child)],
+        &vec![&s.env, 6_000, 4_000],
+        &None,
+    );
+
+    let deep = s.client.preview_payout_deep(&parent, &1_000);
+    assert_eq!(deep.len(), 3);
+    assert_eq!(find_amount(&s.env, &deep, &direct), 600);
+    assert_eq!(find_amount(&s.env, &deep, &leaf_a), 200);
+    assert_eq!(find_amount(&s.env, &deep, &leaf_b), 200);
+
+    // Verify leaf amounts sum to the input amount.
+    let total: i128 = deep.iter().map(|(_, amt)| amt).sum();
+    assert_eq!(total, 1_000);
+
+    // Verify preview matches what an actual pay produces.
+    // For nested splits, pay credits the child escrow; distribute pays leaves.
+    s.client.pay(&payer, &parent, &token_id, &1_000);
+    assert_eq!(token_client.balance(&direct), 600);
+    s.client.distribute(&child, &token_id);
+    assert_eq!(token_client.balance(&leaf_a), 200);
+    assert_eq!(token_client.balance(&leaf_b), 200);
+}
+
+#[test]
+fn deep_preview_three_level_tree() {
+    // root: eng(60 %) + design(40 %)
+    // eng:  alice(50 %) + bob(50 %)
+    // design: subteam(75 %) + carol(25 %)
+    // subteam: dave(100 %)
+    //
+    // root payment of 1_000:
+    //   eng   → 600  → alice 300, bob 300
+    //   design→ 400  → subteam 300 → dave 300, carol 100
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+    let carol = Address::generate(&s.env);
+    let dave = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 1_000);
+
+    let subteam = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&dave)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let eng = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&alice), acct(&bob)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    let design = s.client.create_split(
+        &creator,
+        &vec![&s.env, Recipient::Split(subteam), acct(&carol)],
+        &vec![&s.env, 7_500, 2_500],
+        &None,
+    );
+    let root = s.client.create_split(
+        &creator,
+        &vec![&s.env, Recipient::Split(eng), Recipient::Split(design)],
+        &vec![&s.env, 6_000, 4_000],
+        &None,
+    );
+
+    let deep = s.client.preview_payout_deep(&root, &1_000);
+    assert_eq!(deep.len(), 4);
+    assert_eq!(find_amount(&s.env, &deep, &alice), 300);
+    assert_eq!(find_amount(&s.env, &deep, &bob), 300);
+    assert_eq!(find_amount(&s.env, &deep, &dave), 300);
+    assert_eq!(find_amount(&s.env, &deep, &carol), 100);
+
+    let total: i128 = deep.iter().map(|(_, amt)| amt).sum();
+    assert_eq!(total, 1_000);
+
+    // Verify preview matches actual pay → distribute chain.
+    s.client.pay(&payer, &root, &token_id, &1_000);
+    s.client.distribute(&eng, &token_id);
+    s.client.distribute(&design, &token_id);
+    s.client.distribute(&subteam, &token_id);
+
+    assert_eq!(token_client.balance(&alice), 300);
+    assert_eq!(token_client.balance(&bob), 300);
+    assert_eq!(token_client.balance(&dave), 300);
+    assert_eq!(token_client.balance(&carol), 100);
+}
+
+#[test]
+fn deep_preview_aggregates_shared_leaf_address() {
+    // parent: child_a(50 %) + child_b(50 %)
+    // child_a: shared(100 %)
+    // child_b: shared(100 %)
+    // The same address appears in both branches; amounts must be summed.
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let shared = Address::generate(&s.env);
+
+    let child_a = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&shared)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let child_b = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&shared)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, Recipient::Split(child_a), Recipient::Split(child_b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    let deep = s.client.preview_payout_deep(&parent, &1_000);
+    // Only one entry for `shared`.
+    assert_eq!(deep.len(), 1);
+    assert_eq!(find_amount(&s.env, &deep, &shared), 1_000);
+
+    let total: i128 = deep.iter().map(|(_, amt)| amt).sum();
+    assert_eq!(total, 1_000);
+}
+
+#[test]
+fn deep_preview_dust_rounding_matches_actual_pay() {
+    // Use a tricky share combination that produces dust at multiple levels
+    // and verify the preview matches real payments.
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let c = Address::generate(&s.env);
+    let d = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let amount = 777i128;
+    let (token_id, token_client) = fund_token(&s.env, &payer, amount);
+
+    // child: a(3333), b(3333), c(3334) — last gets dust
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b), acct(&c)],
+        &vec![&s.env, 3_333, 3_333, 3_334],
+        &None,
+    );
+    // parent: d(50 %), child(50 %)
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&d), Recipient::Split(child)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    let deep = s.client.preview_payout_deep(&parent, &amount);
+    let total: i128 = deep.iter().map(|(_, amt)| amt).sum();
+    assert_eq!(total, amount);
+
+    // Verify the preview matches actual payout.
+    s.client.pay(&payer, &parent, &token_id, &amount);
+    s.client.distribute(&child, &token_id);
+
+    assert_eq!(token_client.balance(&d), find_amount(&s.env, &deep, &d));
+    assert_eq!(token_client.balance(&a), find_amount(&s.env, &deep, &a));
+    assert_eq!(token_client.balance(&b), find_amount(&s.env, &deep, &b));
+    assert_eq!(token_client.balance(&c), find_amount(&s.env, &deep, &c));
+}
+
+#[test]
+fn deep_preview_rejects_non_positive_amount() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    assert_eq!(
+        s.client.try_preview_payout_deep(&id, &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+    assert_eq!(
+        s.client.try_preview_payout_deep(&id, &-1),
+        Err(Ok(Error::InvalidAmount))
+    );
+}
+
+#[test]
+fn deep_preview_rejects_unknown_split() {
+    let s = setup();
+    assert_eq!(
+        s.client.try_preview_payout_deep(&99, &100),
+        Err(Ok(Error::SplitNotFound))
+    );
+}
+
+#[test]
+fn deep_preview_depth_cap_is_enforced() {
+    // Build a chain: s0 → s1 → s2 → … → s(N) where N = MAX_PREVIEW_DEPTH + 1.
+    // The root is at depth 0 and each wrapper adds one level, so wrapping
+    // MAX_PREVIEW_DEPTH + 1 times creates a chain that exceeds the cap.
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf = Address::generate(&s.env);
+
+    // Create the innermost single-account split first (depth = MAX_PREVIEW_DEPTH + 1
+    // when reached from the root at depth 0).
+    let mut current_id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+
+    // Wrap it MAX_PREVIEW_DEPTH + 1 times so the leaf split is reached at
+    // depth MAX_PREVIEW_DEPTH + 1, which exceeds the cap.
+    for _ in 0..=super::MAX_PREVIEW_DEPTH {
+        current_id = s.client.create_split(
+            &creator,
+            &vec![&s.env, Recipient::Split(current_id)],
+            &vec![&s.env, 10_000],
+            &None,
+        );
+    }
+
+    // current_id is (MAX_PREVIEW_DEPTH + 1) levels deep — must be rejected.
+    let result = s.client.try_preview_payout_deep(&current_id, &1_000);
+    assert_eq!(result, Err(Ok(Error::BadChildSplit)));
+
+    // One level shallower (exactly MAX_PREVIEW_DEPTH total) must succeed.
+    // current_id - 1 is the split that is only MAX_PREVIEW_DEPTH levels deep.
+    let shallow_root = current_id - 1;
+    let deep = s.client.preview_payout_deep(&shallow_root, &1_000);
+    let total: i128 = deep.iter().map(|(_, amt)| amt).sum();
+    assert_eq!(total, 1_000);
+}

@@ -163,6 +163,19 @@ export interface Client {
   preview_payout: ({id, amount}: {id: u64, amount: i128}, options?: MethodOptions) => Promise<AssembledTransaction<Result<Array<i128>>>>
 
   /**
+   * Construct and simulate a preview_payout_deep transaction. Returns an
+   * `AssembledTransaction` object which will have a `result` field containing
+   * the result of the simulation. If this transaction changes contract state,
+   * you will need to call `signAndSend()` on the returned object.
+   *
+   * Resolves every `Recipient::Split` child recursively down to leaf accounts
+   * and returns `(address, amount)` pairs.  Duplicate leaf addresses are
+   * aggregated.  Rounding matches `pay` exactly.  Recursion is bounded to 8
+   * levels; calls that would exceed the cap return `BadChildSplit`.
+   */
+  preview_payout_deep: ({id, amount}: {id: u64, amount: i128}, options?: MethodOptions) => Promise<AssembledTransaction<Result<Array<readonly [string, i128]>>>>
+
+  /**
    * Construct and simulate a transfer_control transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Proposes transferring control to a new address (two-step), or locks the
    * split forever when `new_controller` is `None`.
@@ -339,6 +352,7 @@ export class Client extends ContractClient {
         cancel_transfer: this.txFromJSON<Result<void>>,
         transfer_control: this.txFromJSON<Result<void>>,
         pending_controller: this.txFromJSON<Option<string>>,
+        preview_payout_deep: this.txFromJSON<Result<Array<readonly [string, i128]>>>,
         create_stream: this.txFromJSON<Result<u64>>,
         get_stream: this.txFromJSON<Result<Stream>>,
         vested_of: this.txFromJSON<Result<i128>>,

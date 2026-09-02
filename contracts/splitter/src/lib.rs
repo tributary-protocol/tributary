@@ -653,6 +653,37 @@ impl Splitter {
         amounts(&env, &split, amount)
     }
 
+    /// Returns the exact per-leaf-account amounts a payment of `amount` would
+    /// ultimately produce, resolving every `Recipient::Split` child recursively
+    /// down to `Recipient::Account` leaves.
+    ///
+    /// Each element is `(address, amount)`.  If the same address appears as a
+    /// leaf under more than one branch its amounts are aggregated into a single
+    /// entry so the vector has no duplicate addresses.
+    ///
+    /// Rounding is applied at every level using the same `amounts()` helper
+    /// that `pay` and `distribute` use, so dust-to-last-recipient behaviour
+    /// matches the actual payment exactly.
+    ///
+    /// # Depth cap
+    ///
+    /// Recursion is bounded to **8 levels** of nesting.  At the current limit
+    /// of 32 recipients per split that still allows trees with up to 32⁸
+    /// theoretical leaf slots, far more than any real-world routing tree.
+    /// Calls that would exceed the cap return [`Error::BadChildSplit`].
+    pub fn preview_payout_deep(
+        env: Env,
+        id: u64,
+        amount: i128,
+    ) -> Result<Vec<(Address, i128)>, Error> {
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        let mut out: Vec<(Address, i128)> = Vec::new(&env);
+        resolve_deep(&env, id, amount, 0, &mut out)?;
+        Ok(out)
+    }
+
     #[must_use]
     pub fn balance(env: Env, id: u64, token: Address) -> i128 {
         let key = DataKey::Balance(id, token.clone());
@@ -1209,6 +1240,61 @@ fn distribute_recursive(
     }
 
     Ok(amount)
+}
+
+/// Maximum nesting depth for [`Splitter::preview_payout_deep`].
+///
+/// At the per-split limit of 32 recipients this still allows trees with
+/// millions of leaf slots in practice.  The bound prevents run-away
+/// recursion if a future contract upgrade accidentally creates a cycle that
+/// bypasses the `validate` guard.
+pub const MAX_PREVIEW_DEPTH: u32 = 8;
+
+/// Recursive helper for `preview_payout_deep`.
+///
+/// Walks the split at `id` and appends `(Address, amount)` leaf entries to
+/// `out`, aggregating duplicate addresses.  `depth` is the current recursion
+/// level; returns [`Error::BadChildSplit`] when it would exceed
+/// [`MAX_PREVIEW_DEPTH`].
+fn resolve_deep(
+    env: &Env,
+    id: u64,
+    amount: i128,
+    depth: u32,
+    out: &mut Vec<(Address, i128)>,
+) -> Result<(), Error> {
+    if depth > MAX_PREVIEW_DEPTH {
+        return Err(Error::BadChildSplit);
+    }
+    let split = load(env, id)?;
+    let parts = amounts(env, &split, amount)?;
+    for i in 0..split.recipients.len() {
+        let part = parts.get_unchecked(i);
+        if part <= 0 {
+            continue;
+        }
+        match split.recipients.get_unchecked(i) {
+            Recipient::Account(addr) => {
+                // Aggregate into an existing entry if the address already appears.
+                let mut found = false;
+                for j in 0..out.len() {
+                    let (existing_addr, existing_amt) = out.get_unchecked(j);
+                    if existing_addr == addr {
+                        out.set(j, (existing_addr, existing_amt + part));
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    out.push_back((addr, part));
+                }
+            }
+            Recipient::Split(child) => {
+                resolve_deep(env, child, part, depth + 1, out)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

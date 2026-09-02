@@ -48,6 +48,7 @@ The table below summarizes each call; see [docs/api-reference.md](docs/api-refer
 | `distribute(id, token)` | Pays the credited balance out to all recipients |
 | `close_split(id)` | Controller only. Closes an empty split and reclaims storage |
 | `preview_payout(id, amount)` | Per-recipient amounts a payment would produce |
+| `preview_payout_deep(id, amount)` | Recursively resolved `(address, amount)` pairs down to leaf accounts, depth-capped at 8 levels |
 | `balance(id, token)` | Credited amount waiting to be distributed |
 | `update_split(id, recipients, shares)` | Controller only. Replaces the routing table |
 | `transfer_control(id, new_controller)` | Controller only. Hands over control, or locks the split with None |
