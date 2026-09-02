@@ -23,7 +23,7 @@ A `Recipient` is either `Account(Address)` or `Split(u64)`. Split recipients let
 | `Balance(id, token)` | persistent | escrowed amount per split and token (`i128`) |
 | `Created(creator)` | persistent | ids created by an address (`Vec<u64>`) |
 
-Persistent entries get their TTL extended to about 120 days whenever a split is loaded, with a 30 day threshold, so active splits never expire from the ledger.
+Persistent entries get their TTL extended to about 120 days whenever a split is loaded, with a 30 day threshold, so active splits never expire from the ledger. Balance entries also have their TTL extended on every write (via `credit`) and read (via `balance` and `distribute`), preventing archival of long-parked escrow funds.
 
 ### Money paths
 

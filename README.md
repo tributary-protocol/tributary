@@ -7,6 +7,8 @@
 
 Payment splitting on Stellar. Live at [tributary-omega.vercel.app](https://tributary-omega.vercel.app).
 
+![Tributary dashboard showing the Create tab with recipient inputs and the split list below](assets/dashboard.svg)
+
 A split is a routing rule stored on-chain: a list of recipient addresses and the share each one gets. Once a split exists, anyone can push a payment through it and every recipient gets paid in the same transaction.
 
 Things you can do with one transfer:
@@ -67,7 +69,7 @@ Early days. The core contract works, is tested and runs on testnet, but it is no
 ## Try it in two minutes
 
 1. Install the [Freighter](https://freighter.app) extension and switch it to Testnet.
-2. Fund your account for free at [friendbot](https://lab.stellar.org/account/fund?$=network$id=testnet).
+2. Fund your account for free at [friendbot](https://lab.stellar.org/account/fund?$=network$id=testnet) (other ways to fund: [docs/testnet-funding.md](docs/testnet-funding.md)).
 3. Open [tributary-omega.vercel.app](https://tributary-omega.vercel.app), connect, and create a split from the Create tab.
 4. Pay through it from the Pay tab and watch both balances land in one transaction.
 
@@ -107,10 +109,13 @@ examples/node-create-and-pay Node script for the create-then-pay flow (no wallet
 
 [docs/glossary.md](docs/glossary.md) defines core terms like split, share, controller, escrow and dust.
 
+[docs/testnet-funding.md](docs/testnet-funding.md) covers funding a testnet account with friendbot — from the browser, the Stellar CLI or plain HTTP — including funding the recipient accounts a split pays.
+
 [docs/preview-payout.md](docs/preview-payout.md) shows how to preview a payout with `preview_payout` before paying.
 
 [docs/integrations.md](docs/integrations.md#distributing-a-two-level-tree) includes an end-to-end nested split example and shows the multi-call distribution order.
 
+[docs/tutorial-referrer-pool.md](docs/tutorial-referrer-pool.md) walks through building a marketplace referrer pool with nested splits end to end.
 [docs/formal-verification.md](docs/formal-verification.md) records the conservation invariants proven with Kani, the bounds they hold under, and what is still covered only by tests.
 
 ## Contributing
