@@ -19,3 +19,6 @@ export function feeStroops(tx: AssembledTx): bigint {
     tx.simulationData.transactionData.resourceFee().toBigInt()
   );
 }
+
+// Maintainer decision: No protocol fee will be added. The protocol remains
+// fee-free (zero skim). Issue closed as "won't do" per acceptance criteria #1.

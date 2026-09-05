@@ -24,6 +24,7 @@ contractmeta!(
 
 pub const MAX_CASCADE_DEPTH: u32 = 5;
 pub const MAX_DISTRIBUTE_TOKENS: u32 = 10;
+pub const MAX_FEE_BPS: u32 = 1000;
 
 const DAY_LEDGERS: u32 = 17_280;
 const TTL_THRESHOLD: u32 = 30 * DAY_LEDGERS;
@@ -90,6 +91,12 @@ pub enum Error {
     StreamNotFound = 17,
     /// Code 18. Caller is not the stream's funder.
     NotStreamFunder = 18,
+    /// Code 19. The protocol fee has already been initialized.
+    AlreadyInitialized = 19,
+    /// Code 20. The protocol fee has not been initialized.
+    NotInitialized = 20,
+    /// Code 21. The requested fee rate exceeds the maximum allowed cap.
+    FeeRateTooHigh = 21,
 }
 
 #[contracttype]
@@ -128,6 +135,20 @@ pub struct TokenDistribution {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProtocolFee {
+    pub rate_bps: u32,
+    pub recipient: Option<Address>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PayoutPreview {
+    pub fee_amount: i128,
+    pub recipient_amounts: Vec<i128>,
+}
+
+#[contracttype]
 #[derive(Clone)]
 enum DataKey {
     /// Stores the total number of splits created. Used as a counter for generating
@@ -157,6 +178,8 @@ enum DataKey {
     StreamCount,
     Stream(u64),
     StreamsOf(Address),
+    ProtocolFeeGovernor,
+    ProtocolFee,
 }
 
 #[contractevent]
@@ -259,6 +282,22 @@ pub struct Distributed {
     pub amount: i128,
 }
 
+#[contractevent]
+#[derive(Clone)]
+pub struct ProtocolFeeSet {
+    pub rate_bps: u32,
+    pub recipient: Option<Address>,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct ProtocolFeePaid {
+    #[topic]
+    pub id: u64,
+    pub token: Address,
+    pub amount: i128,
+}
+
 #[contract]
 pub struct Splitter;
 
@@ -306,6 +345,8 @@ impl Splitter {
 
     /// Moves `amount` of `token` from the payer to every recipient of the
     /// split in one call. Rounding dust goes to the last recipient.
+    /// If a protocol fee is configured, the fee is skimmed first and paid
+    /// to the fee recipient; the remainder is split among recipients.
     pub fn pay(
         env: Env,
         from: Address,
@@ -318,13 +359,14 @@ impl Splitter {
             return Err(Error::InvalidAmount);
         }
         let split = load(&env, id)?;
-        payout(&env, &split, &from, &token, amount);
-        SplitPaid { id, token, amount }.publish(&env);
+        let payout_amount = payout(&env, id, &split, &from, &token, amount)?;
+        SplitPaid { id, token, amount: payout_amount }.publish(&env);
         Ok(())
     }
 
     /// Pays several splits from one signer in a single transaction.
     /// `ids` and `amounts` pair up positionally; any failure reverts all.
+    /// If a protocol fee is configured, the fee is skimmed from each payment.
     pub fn pay_many(
         env: Env,
         from: Address,
@@ -348,15 +390,70 @@ impl Splitter {
             let id = ids.get_unchecked(i);
             let amount = amounts.get_unchecked(i);
             let split = load(&env, id)?;
-            payout(&env, &split, &from, &token, amount);
+            let payout_amount = payout(&env, id, &split, &from, &token, amount)?;
             SplitPaid {
                 id,
                 token: token.clone(),
-                amount,
+                amount: payout_amount,
             }
             .publish(&env);
         }
         Ok(())
+    }
+
+    /// Initializes the protocol fee governance. Can only be called once.
+    pub fn init_protocol_fee(env: Env, governor: Address) -> Result<(), Error> {
+        if env.storage().instance().has(&DataKey::ProtocolFeeGovernor) {
+            return Err(Error::AlreadyInitialized);
+        }
+        governor.require_auth();
+        env.storage().instance().set(&DataKey::ProtocolFeeGovernor, &governor);
+        env.storage()
+            .instance()
+            .set(&DataKey::ProtocolFee, &ProtocolFee { rate_bps: 0, recipient: None });
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        Ok(())
+    }
+
+    /// Sets the protocol fee rate (in basis points) and recipient.
+    /// Only the protocol fee governor can call this.
+    pub fn set_protocol_fee(
+        env: Env,
+        rate_bps: u32,
+        recipient: Option<Address>,
+    ) -> Result<(), Error> {
+        let governor: Address = env.storage()
+            .instance()
+            .get(&DataKey::ProtocolFeeGovernor)
+            .ok_or(Error::NotInitialized)?;
+        governor.require_auth();
+        if rate_bps > MAX_FEE_BPS {
+            return Err(Error::FeeRateTooHigh);
+        }
+        let fee = ProtocolFee { rate_bps, recipient };
+        env.storage().instance().set(&DataKey::ProtocolFee, &fee);
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        ProtocolFeeSet { rate_bps, recipient }.publish(&env);
+        Ok(())
+    }
+
+    /// Returns the current protocol fee configuration.
+    pub fn get_protocol_fee(env: Env) -> Option<ProtocolFee> {
+        env.storage().instance().get(&DataKey::ProtocolFee)
+    }
+
+    /// Internal helper to compute the fee for a given amount.
+    fn get_fee_amount(env: &Env, amount: i128) -> (i128, Option<Address>) {
+        let fee = env.storage().instance().get::<ProtocolFee>(&DataKey::ProtocolFee);
+        if let Some(fee) = fee {
+            if fee.rate_bps > 0 {
+                if let Some(recipient) = fee.recipient {
+                    let fee_amount = amount * fee.rate_bps as i128 / 10_000;
+                    return (fee_amount, Some(recipient));
+                }
+            }
+        }
+        (0, None)
     }
 
     /// Pays several splits from one signer in a single transaction, each
@@ -386,11 +483,11 @@ impl Splitter {
             let amount = amounts.get_unchecked(i);
             let token = tokens.get_unchecked(i);
             let split = load(&env, id)?;
-            payout(&env, &split, &from, &token, amount);
+            let payout_amount = payout(&env, id, &split, &from, &token, amount)?;
             SplitPaid {
                 id,
                 token: token.clone(),
-                amount,
+                amount: payout_amount,
             }
             .publish(&env);
         }
@@ -571,15 +668,16 @@ impl Splitter {
     /// Anyone can call this; the routing table decides where funds go.
     pub fn distribute(env: Env, id: u64, token: Address) -> Result<i128, Error> {
         let (split, amount) = distribute_node(&env, id, &token)?;
-        payout(
+        let payout_amount = payout(
             &env,
+            id,
             &split,
             &env.current_contract_address(),
             &token,
             amount,
-        );
-        Distributed { id, token, amount }.publish(&env);
-        Ok(amount)
+        )?;
+        Distributed { id, token, amount: payout_amount }.publish(&env);
+        Ok(payout_amount)
     }
 
     /// Distributes a parent split and recursively distributes any freshly-credited
@@ -625,32 +723,40 @@ impl Splitter {
                 continue;
             }
             let (node_split, amount) = distribute_node(&env, id, &token)?;
-            payout(
+            let payout_amount = payout(
                 &env,
+                id,
                 &node_split,
                 &env.current_contract_address(),
                 &token,
                 amount,
-            );
+            )?;
             Distributed {
                 id,
                 token: token.clone(),
-                amount,
+                amount: payout_amount,
             }
             .publish(&env);
-            distributions.push_back(TokenDistribution { token, amount });
+            distributions.push_back(TokenDistribution {
+                token,
+                amount: payout_amount,
+            });
         }
         Ok(distributions)
     }
 
-    /// Returns the exact per-recipient amounts a payment of `amount` would
-    /// produce, without moving any funds.
-    pub fn preview_payout(env: Env, id: u64, amount: i128) -> Result<Vec<i128>, Error> {
+    /// Returns the exact fee and per-recipient amounts a payment of `amount`
+    /// would produce, without moving any funds.
+    pub fn preview_payout(env: Env, id: u64, amount: i128) -> Result<PayoutPreview, Error> {
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
         let split = load(&env, id)?;
-        amounts(&env, &split, amount)
+        let (fee_amount, recipient_amounts) = amounts(&env, &split, amount)?;
+        Ok(PayoutPreview {
+            fee_amount,
+            recipient_amounts,
+        })
     }
 
     #[must_use]
@@ -872,11 +978,12 @@ impl Splitter {
         let split = load(&env, stream.split_id)?;
         payout(
             &env,
+            stream.split_id,
             &split,
             &env.current_contract_address(),
             &stream.token,
             claimable,
-        );
+        )?;
 
         StreamWithdrawn {
             id,
@@ -918,11 +1025,12 @@ impl Splitter {
             let split = load(&env, stream.split_id)?;
             payout(
                 &env,
+                stream.split_id,
                 &split,
                 &env.current_contract_address(),
                 &stream.token,
                 claimable,
-            );
+            )?;
             StreamWithdrawn {
                 id,
                 amount: claimable,
@@ -1031,26 +1139,50 @@ fn validate(
     })
 }
 
-fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {
+fn amounts(env: &Env, split: &Split, amount: i128) -> Result<(i128, Vec<i128>), Error> {
+    let (fee_amount, _) = Splitter::get_fee_amount(env, amount);
+    let payout_amount = amount - fee_amount;
     let mut out = Vec::new(env);
     let last = split.recipients.len() - 1;
     let mut assigned: i128 = 0;
     for i in 0..split.recipients.len() {
         let part = if i == last {
             // Dust: whatever rounding left over goes to the last recipient,
-            // so the parts sum to `amount` exactly.
-            amount - assigned
+            // so the parts sum to `payout_amount` exactly.
+            payout_amount - assigned
         } else {
-            math::split_part(amount, split.shares.get_unchecked(i))
+            math::split_part(payout_amount, split.shares.get_unchecked(i))
                 .ok_or(Error::ArithmeticOverflow)?
         };
         out.push_back(part);
         assigned += part;
     }
-    Ok(out)
+    Ok((fee_amount, out))
 }
 
-fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i128) {
+fn payout(
+    env: &Env,
+    split_id: u64,
+    split: &Split,
+    from: &Address,
+    token: &Address,
+    amount: i128,
+) -> Result<i128, Error> {
+    let (fee_amount, fee_recipient) = Splitter::get_fee_amount(env, amount);
+    let payout_amount = amount - fee_amount;
+    if fee_amount > 0 {
+        if let Some(recipient) = fee_recipient {
+            let fee_client = token::Client::new(env, token);
+            fee_client.transfer(from, &recipient, &fee_amount);
+            ProtocolFeePaid {
+                id: split_id,
+                token: token.clone(),
+                amount: fee_amount,
+            }
+            .publish(env);
+        }
+    }
+
     let client = token::Client::new(env, token);
     let vault = env.current_contract_address();
 
@@ -1059,11 +1191,11 @@ fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i12
 
     for i in 0..split.recipients.len() {
         let part = if i == last {
-            amount - assigned
+            payout_amount - assigned
         } else {
-            match math::split_part(amount, split.shares.get_unchecked(i)) {
+            match math::split_part(payout_amount, split.shares.get_unchecked(i)) {
                 Some(p) => p,
-                None => return,
+                None => return Err(Error::ArithmeticOverflow),
             }
         };
         assigned += part;
@@ -1090,6 +1222,7 @@ fn payout(env: &Env, split: &Split, from: &Address, token: &Address, amount: i12
             }
         }
     }
+    Ok(payout_amount)
 }
 
 fn credit_account(env: &Env, account: &Address, token: &Address, amount: i128) {
@@ -1192,11 +1325,18 @@ fn distribute_recursive(
         Err(e) => return Err(e),
     };
 
-    payout(env, &split, &env.current_contract_address(), token, amount);
+    let payout_amount = payout(
+        env,
+        id,
+        &split,
+        &env.current_contract_address(),
+        token,
+        amount,
+    )?;
     Distributed {
         id,
         token: token.clone(),
-        amount,
+        amount: payout_amount,
     }
     .publish(env);
 
@@ -1208,7 +1348,7 @@ fn distribute_recursive(
         }
     }
 
-    Ok(amount)
+    Ok(payout_amount)
 }
 
 #[cfg(test)]

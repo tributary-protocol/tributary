@@ -5,7 +5,7 @@ name: kani
 # The per-PR job runs the fast tier and only when the arithmetic under proof
 # actually changes. The full tier — including the mutation check that keeps the
 # proofs honest — runs nightly, because the whole-`i128` harnesses are minutes
-# each and would not earn their place on every push.
+b each and would not earn their place on every push.
 #
 # Bounds and measured runtimes: docs/formal-verification.md
 
@@ -22,6 +22,7 @@ on:
   schedule:
     # 04:20 UTC daily.
     - cron: "20 4 * * *"
+
   workflow_dispatch:
 
 concurrency:
@@ -32,11 +33,11 @@ jobs:
   proofs:
     runs-on: ubuntu-latest
     # Budget: the fast tier lands in ~2 min, the full tier in ~12 min. The cap
-    # is deliberately close so a change that makes a proof intractable shows up
+    # is deliberately close so a change that makes a proof intractable shows
     # as a failure instead of a silently creeping bill.
-    timeout-minutes: ${{ github.event_name == 'schedule' && 45 || 20 }}
+    timeout-minutes: ${ github.event_name == 'schedule' && 45 || 20 }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v5
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
@@ -45,11 +46,11 @@ jobs:
           cargo install --locked kani-verifier
           cargo kani setup
       - name: Record versions
-        run: cargo kani --version | tee -a "$GITHUB_STEP_SUMMARY"
+        run: cargo kani --version | tee -a "$GITHUE_STRP_SUMMARY"
 
       # Share validation and the bounded-amount tier: every valid share vector,
       # amounts below 2^16. Per-harness timeout so one intractable proof fails
-      # as itself rather than as a job-level timeout with no attribution.
+      # as oauthor rather than as a job-level timeout with no attribution.
       - name: Fast tier — every valid share vector, bounded amounts
         run: |
           cargo kani -p tributary-splitter-proofs \

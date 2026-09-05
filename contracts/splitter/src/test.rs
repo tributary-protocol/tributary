@@ -359,12 +359,278 @@ fn preview_matches_actual_payout() {
     );
 
     let preview = s.client.preview_payout(&id, &1_000);
-    assert_eq!(preview, vec![&s.env, 333, 333, 334]);
+    assert_eq!(preview.fee, 0);
+    assert_eq!(preview.amounts, vec![&s.env, 333, 333, 334]);
 
     s.client.pay(&payer, &id, &token_id, &1_000);
-    assert_eq!(token_client.balance(&a), preview.get_unchecked(0));
-    assert_eq!(token_client.balance(&b), preview.get_unchecked(1));
-    assert_eq!(token_client.balance(&c), preview.get_unchecked(2));
+    assert_eq!(token_client.balance(&a), preview.amounts.get_unchecked(0));
+    assert_eq!(token_client.balance(&b), preview.amounts.get_unchecked(1));
+    assert_eq!(token_client.balance(&c), preview.amounts.get_unchecked(2));
+}
+
+#[test]
+fn protocol_fee_defaults_to_zero_off() {
+    let s = setup();
+    assert_eq!(s.client.fee_bps(), 0);
+    assert_eq!(s.client.fee_recipient(), None);
+}
+
+#[test]
+fn zero_protocol_fee_behaves_exactly_like_today() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 1_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 6_000, 4_000],
+        &None,
+    );
+
+    s.client.pay(&payer, &id, &token_id, &1_000);
+
+    assert_eq!(token_client.balance(&a), 600);
+    assert_eq!(token_client.balance(&b), 400);
+    assert_eq!(token_client.balance(&payer), 0);
+}
+
+#[test]
+fn pay_skims_protocol_fee_before_splitting() {
+    let s = setup();
+    let fee_recipient = Address::generate(&s.env);
+    s.client.set_fee_recipient(&fee_recipient);
+    s.client.set_fee_bps(&1_000);
+
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 1_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 6_000, 4_000],
+        &None,
+    );
+
+    s.client.pay(&payer, &id, &token_id, &1_000);
+
+    assert_eq!(token_client.balance(&fee_recipient), 100);
+    assert_eq!(token_client.balance(&a), 540);
+    assert_eq!(token_client.balance(&b), 360);
+    assert_eq!(token_client.balance(&payer), 0);
+}
+
+#[test]
+fn distribute_skims_protocol_fee() {
+    let s = setup();
+    let fee_recipient = Address::generate(&s.env);
+    s.client.set_fee_recipient(&fee_recipient);
+    s.client.set_fee_bps(&500);
+
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 1_000);
+
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 7_500, 2_500],
+        &None,
+    );
+
+    s.client.deposit(&payer, &id, &token_id, &1_000);
+    s.client.distribute(&id, &token_id);
+
+    assert_eq!(token_client.balance(&fee_recipient), 50);
+    assert_eq!(token_client.balance(&a), 712);
+    assert_eq!(token_client.balance(&b), 238);
+}
+
+#[test]
+fn preview_payout_includes_protocol_fee() {
+    let s = setup();
+    let fee_recipient = Address::generate(&s.env);
+    s.client.set_fee_recipient(&fee_recipient);
+    s.client.set_fee_bps(&1_000);
+
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 1_000);
+    let id = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    let preview = s.client.preview_payout(&id, &1_000);
+    assert_eq!(preview.fee, 100);
+    assert_eq!(preview.amounts, vec![&s.env, 450, 450]);
+
+    s.client.pay(&payer, &id, &token_id, &1_000);
+    assert_eq!(token_client.balance(&fee_recipient), preview.fee);
+    assert_eq!(token_client.balance(&a), preview.amounts.get_unchecked(0));
+    assert_eq!(token_client.balance(&b), preview.amounts.get_unchecked(1));
+}
+
+#[test]
+fn protocol_fee_conservation_holds() {
+    let s = setup();
+    let fee_recipient = Address::generate(&s.env);
+    s.client.set_fee_recipient(&fee_recipient);
+    s.client.set_fee_bps(&333);
+
+    let creator = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 100_000);
+
+    let cases = [
+        (vec![&s.env, 9_999u32, 1u32], 777i128),
+        (vec![&s.env, 5_000u32, 4_999u32, 1u32], 1_003i128),
+    ];
+
+    for (shares, amount) in cases {
+        let mut addrs: soroban_sdk::Vec<Address> = vec![&s.env];
+        let mut recipients = vec![&s.env];
+        for _ in 0..shares.len() {
+            let addr = Address::generate(&s.env);
+            recipients.push_back(acct(&addr));
+            addrs.push_back(addr);
+        }
+        let id = s.client.create_split(&creator, &recipients, &shares, &None);
+        s.client.pay(&payer, &id, &token_id, &amount);
+
+        let fee = amount * 333 / 10_000;
+        let mut received: i128 = 0;
+        for addr in addrs.iter() {
+            received += token_client.balance(&addr);
+        }
+        assert_eq!(received + fee, amount);
+    }
+}
+
+#[test]
+fn protocol_fee_rate_above_max_is_rejected() {
+    let s = setup();
+    let fee_recipient = Address::generate(&s.env);
+    s.client.set_fee_recipient(&fee_recipient);
+    assert!(s.client.try_set_fee_bps(&10_000).is_err());
+}
+
+#[test]
+fn set_fee_requires_authorization() {
+    let s = setup();
+    let fee_recipient = Address::generate(&s.env);
+    s.env.set_auths(&[]);
+    let result = s.env.try_invoke_contract::<(), Error>(
+        &s.client.address,
+        &soroban_sdk::Symbol::new(&s.env, "set_fee_bps"),
+        (500u32,).into_val(&s.env),
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn set_fee_recipient_requires_authorization() {
+    let s = setup();
+    let fee_recipient = Address::generate(&s.env);
+    s.env.set_auths(&[]);
+    let result = s.env.try_invoke_contract::<(), Error>(
+        &s.client.address,
+        &soroban_sdk::Symbol::new(&s.env, "set_fee_recipient"),
+        (fee_recipient,).into_val(&s.env),
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn pay_many_applies_protocol_fee_to_each_split() {
+    let s = setup();
+    let fee_recipient = Address::generate(&s.env);
+    s.client.set_fee_recipient(&fee_recipient);
+    s.client.set_fee_bps(&1_000);
+
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 10_000);
+
+    let first = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let second = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), acct(&b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    s.client.pay_many(
+        &payer,
+        &vec![&s.env, first, second],
+        &vec![&s.env, 1_000, 2_000],
+        &token_id,
+    );
+
+    assert_eq!(token_client.balance(&fee_recipient), 300);
+    assert_eq!(token_client.balance(&a), 1_800);
+    assert_eq!(token_client.balance(&b), 900);
+    assert_eq!(token_client.balance(&payer), 7_000);
+}
+
+#[test]
+fn nested_split_applies_fee_at_each_distribution() {
+    let s = setup();
+    let fee_recipient = Address::generate(&s.env);
+    s.client.set_fee_recipient(&fee_recipient);
+    s.client.set_fee_bps(&1_000);
+
+    let creator = Address::generate(&s.env);
+    let leaf_a = Address::generate(&s.env);
+    let leaf_b = Address::generate(&s.env);
+    let direct = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 1_000);
+
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf_a), acct(&leaf_b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&direct), Recipient::Split(child)],
+        &vec![&s.env, 6_000, 4_000],
+        &None,
+    );
+
+    s.client.pay(&payer, &parent, &token_id, &1_000);
+
+    assert_eq!(token_client.balance(&fee_recipient), 100);
+    assert_eq!(token_client.balance(&direct), 540);
+    assert_eq!(s.client.balance(&child, &token_id), 360);
+
+    s.client.distribute(&child, &token_id);
+    assert_eq!(token_client.balance(&fee_recipient), 136);
+    assert_eq!(token_client.balance(&leaf_a), 162);
+    assert_eq!(token_client.balance(&leaf_b), 162);
+    assert_eq!(token_client.balance(&direct), 540);
+    assert_eq!(token_client.balance(&s.client.address), 0);
 }
 
 #[test]
@@ -1246,6 +1512,44 @@ proptest::proptest! {
             received += token_client.balance(&addr);
         }
         proptest::prop_assert_eq!(received, amount);
+    }
+}
+
+proptest::proptest! {
+    #[test]
+    fn property_conservation_with_protocol_fee(
+        weights in proptest::collection::vec(1u32..=1_000u32, 2..10usize),
+        amount in 1i128..1_000_000i128,
+    ) {
+        let env = soroban_sdk::Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(Splitter, ());
+        let client = SplitterClient::new(&env, &contract_id);
+        let creator = soroban_sdk::Address::generate(&env);
+        let fee_recipient = soroban_sdk::Address::generate(&env);
+        client.set_fee_recipient(&fee_recipient);
+        client.set_fee_bps(&333);
+
+        let shares = weights_to_shares(&env, &weights);
+        let mut recipients = soroban_sdk::vec![&env];
+        let mut addrs: Vec<Address> = soroban_sdk::vec![&env];
+        for _ in shares.iter() {
+            let addr = soroban_sdk::Address::generate(&env);
+            recipients.push_back(acct(&addr));
+            addrs.push_back(addr);
+        }
+
+        let id = client.create_split(&creator, &recipients, &shares, &None);
+        let payer = soroban_sdk::Address::generate(&env);
+        let (token_id, token_client) = fund_token(&env, &payer, amount);
+        client.pay(&payer, &id, &token_id, &amount);
+
+        let mut received: i128 = 0;
+        for addr in addrs.iter() {
+            received += token_client.balance(&addr);
+        }
+        let fee = amount * 333 / 10_000;
+        proptest::prop_assert_eq!(received + fee, amount);
     }
 }
 

@@ -70,6 +70,7 @@ export interface Split {
   controller: Option<string>;
   recipients: Array<Recipient>;
   shares: Array<u32>;
+  fee: FeeConfig;
 }
 
 export interface Stream {
@@ -81,6 +82,16 @@ export interface Stream {
   start_time: u64;
   end_time: u64;
   withdrawn: i128;
+}
+
+export interface FeeConfig {
+  rate: u32;
+  recipient: string;
+}
+
+export interface PreviewPayout {
+  recipients: Array<i128>;
+  fee: i128;
 }
 
 export type Recipient = {tag: "Account", values: readonly [string]} | {tag: "Split", values: readonly [u64]};
@@ -142,6 +153,12 @@ export interface Client {
   split_count: (options?: MethodOptions) => Promise<AssembledTransaction<u64>>
 
   /**
+   * Construct and simulate a fee_cap transaction. Returns an AssembledTransaction object which will have a result field containing the result of the simulation. If this transaction changes contract state, you will need to call signAndSend() on the returned object.
+   * Returns the maximum fee rate in basis points allowed by the protocol.
+   */
+  fee_cap: (options?: MethodOptions) => Promise<AssembledTransaction<u32>>
+
+  /**
    * Construct and simulate a create_split transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Registers a new split and returns its id. Shares are basis points
    * and must sum to exactly 10_000. Passing a controller makes the
@@ -156,11 +173,17 @@ export interface Client {
   update_split: ({id, recipients, shares}: {id: u64, recipients: Array<Recipient>, shares: Array<u32>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
+   * Construct and simulate a set_fee transaction. Returns an AssembledTransaction object which will have a result field containing the result of the simulation. If this transaction changes contract state, you will need to call signAndSend() on the returned object.
+   * Updates the fee configuration for a mutable split. The fee rate is in basis points and must not exceed the protocol cap.
+   */
+  set_fee: ({id, fee}: {id: u64, fee: FeeConfig}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+
+  /**
    * Construct and simulate a preview_payout transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Returns the exact per-recipient amounts a payment of `amount` would
    * produce, without moving any funds.
    */
-  preview_payout: ({id, amount}: {id: u64, amount: i128}, options?: MethodOptions) => Promise<AssembledTransaction<Result<Array<i128>>>>
+  preview_payout: ({id, amount}: {id: u64, amount: i128}, options?: MethodOptions) => Promise<AssembledTransaction<Result<PreviewPayout>>>
 
   /**
    * Construct and simulate a transfer_control transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -207,6 +230,19 @@ export interface Client {
   cancel_stream: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
   top_up: ({id, amount_to_add}: {id: u64, amount_to_add: i128}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
   streams_of: ({funder}: {funder: string}, options?: MethodOptions) => Promise<AssembledTransaction<Array<u64>>>
+
+  /**
+   * Construct and simulate a get_fee transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the fee configuration for the split.
+   */
+  get_fee: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<FeeConfig>>>
+
+  /**
+   * Construct and simulate a set_fee transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Sets the fee rate (in basis points) and recipient for the split.
+   * Rate must not exceed the protocol cap. Only the controller can call this.
+   */
+  set_fee: ({id, rate, recipient}: {id: u64, rate: u32, recipient: string}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 }
 export class Client extends ContractClient {
   static async deploy<T = Client>(

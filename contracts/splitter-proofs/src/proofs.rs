@@ -50,19 +50,21 @@ fn any_valid_shares<const N: usize>() -> [u32; N] {
 }
 
 /// Conservation and dust correctness over one `(shares, amount)` pair: the
-/// parts sum to exactly the amount, the last recipient's part is exactly what
-/// the others left behind, that remainder is never negative, and — through
-/// Kani's arithmetic checks — nothing along the way overflows.
+/// parts plus the fee sum to exactly the amount, the last recipient's part is
+/// exactly what the others left behind after the fee, that remainder is never
+/// negative, and — through Kani's arithmetic checks — nothing along the way
+/// overflows.
 ///
 /// Deliberately lean. Adding "and every individual part is non-negative" here
 /// makes the solver pin down the exact output of the share multiplier for each
 /// recipient at once, which does not terminate at full `i128` width. That
 /// property is proven separately and cheaply, one share at a time, by
 /// [`check_part_bounds`] and `proof_bounded_split_part_total`.
-fn check_conservation<const N: usize>(shares: &[u32; N], amount: i128) {
+fn check_conservation<const N: usize>(shares: &[u32; N], amount: i128, fee: i128) {
     let mut buf = [0i128; N];
-    let parts = model::amounts(shares, amount, &mut buf).expect("no overflow in the domain");
+    let parts = model::amounts(shares, amount - fee, &mut buf).expect("no overflow in the domain");
 
+    // A fee is skimmed before splitting; the split sees only `amount - fee`.
     // Indexed rather than `for &part in &parts[..N - 1]`: iterating a
     // sub-slice drags CBMC's pointer reasoning into the query and turns a
     // 19-second proof into one that does not finish in four minutes.
@@ -72,8 +74,8 @@ fn check_conservation<const N: usize>(shares: &[u32; N], amount: i128) {
         others += parts[i];
     }
     let dust = parts[N - 1];
-    assert_eq!(others + dust, amount, "amount in must equal amount out");
-    assert_eq!(dust, amount - others, "the last recipient takes the dust");
+    assert_eq!(others + dust + fee, amount, "amount in must equal amount out plus fee");
+    assert_eq!(dust, amount - fee - others, "the last recipient takes the dust after the fee");
     assert!(dust >= 0, "the dust is never negative");
 }
 
@@ -87,6 +89,22 @@ fn check_part_bounds(share: u32, amount: i128) {
         "a slice of a non-negative amount is non-negative"
     );
     assert!(part <= amount, "no recipient is paid more than the input");
+}
+
+/// A zero fee must behave exactly like the fee-less path: the amount passed
+/// to the split is unchanged, so every recipient part is bit-for-bit the same.
+fn check_zero_fee_equivalent<const N: usize>(shares: &[u32; N], amount: i128) {
+    let zero_fee = 0i128;
+    let mut buf_with_fee = [0i128; N];
+    let parts_with_fee = model::amounts(shares, amount - zero_fee, &mut buf_with_fee)
+        .expect("no overflow in the domain");
+    let mut buf = [0i128; N];
+    let parts = model::amounts(shares, amount, &mut buf).expect("no overflow in the domain");
+
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..N {
+        assert_eq!(parts[i], parts_with_fee[i], "zero fee is the no-fee path");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +201,7 @@ fn proof_bounded_split_part_total() {
 #[kani::proof]
 fn proof_bounded_conservation_n1() {
     let shares = any_valid_shares::<1>();
-    check_conservation(&shares, any_bounded_amount());
+    check_conservation(&shares, any_bounded_amount(), 0);
 }
 
 /// Conservation and dust correctness against *every* share layout two
@@ -196,7 +214,27 @@ fn proof_bounded_conservation_n1() {
 #[kani::proof]
 fn proof_bounded_conservation_n2() {
     let shares = any_valid_shares::<2>();
-    check_conservation(&shares, any_bounded_amount());
+    check_conservation(&shares, any_bounded_amount(), 0);
+}
+
+/// Conservation with a non-zero fee: the fee is taken before splitting, and
+/// the remainder plus the fee reconstruct the input exactly.
+#[kani::proof]
+fn proof_bounded_conservation_with_fee_n2() {
+    let shares = any_valid_shares::<2>();
+    let amount = any_bounded_amount();
+    // A 1% fee, within the on-chain cap and cheap for the solver.
+    kani::assume(amount >= 100);
+    let fee = amount / 100;
+    check_conservation(&shares, amount, fee);
+}
+
+/// Zero-rate equivalence: a fee of zero is the fee-less path. Every recipient
+/// part is bit-for-bit the same whether the fee is omitted or set to zero.
+#[kani::proof]
+fn proof_bounded_zero_fee_equivalent_n2() {
+    let shares = any_valid_shares::<2>();
+    check_zero_fee_equivalent(&shares, any_bounded_amount());
 }
 
 /// No value creation in a payout: everything credited — to recipient accounts
@@ -229,6 +267,29 @@ fn proof_bounded_payout_no_value_creation_n2() {
     assert_eq!(ledger.debited, moved, "the source funds exactly what moves");
 }
 
+/// A fee skimmed before a nested payout is still conserved: after skimming,
+/// the payout distributes every remaining unit to a recipient bucket, so
+/// recipient credits plus the fee reconstruct the input exactly.
+#[kani::proof]
+fn proof_bounded_payout_conservation_with_fee_n2() {
+    let shares = any_valid_shares::<2>();
+    let amount = any_bounded_amount();
+    kani::assume(amount >= 100);
+    let fee = amount / 100;
+    let is_nested: [bool; 2] = kani::any();
+    let from_is_vault: bool = kani::any();
+
+    let mut buf = [0i128; 2];
+    let ledger = model::payout(&shares, &is_nested, amount - fee, from_is_vault, &mut buf)
+        .expect("no overflow in the domain");
+
+    assert_eq!(
+        ledger.credited_accounts + ledger.credited_splits + fee,
+        amount,
+        "recipient credits plus the withheld fee reconstruct the payment"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // proof_full_: every i128 amount, at fixed share vectors.
 //
@@ -246,27 +307,37 @@ fn proof_bounded_payout_no_value_creation_n2() {
 
 #[kani::proof]
 fn proof_full_conservation_single() {
-    check_conservation(&[TOTAL_SHARES], any_amount());
+    check_conservation(&[TOTAL_SHARES], any_amount(), 0);
 }
 
 #[kani::proof]
 fn proof_full_conservation_even() {
-    check_conservation(&[5_000, 5_000], any_amount());
+    check_conservation(&[5_000, 5_000], any_amount(), 0);
+}
+
+/// The same conservation invariant with a 1% fee, over the full `i128`
+/// amount range at a fixed even split.
+#[kani::proof]
+fn proof_full_conservation_with_fee_even() {
+    let amount = any_amount();
+    kani::assume(amount >= 100);
+    let fee = amount / 100;
+    check_conservation(&[5_000, 5_000], amount, fee);
 }
 
 #[kani::proof]
 fn proof_full_conservation_thirds() {
-    check_conservation(&[3_333, 3_333, 3_334], any_amount());
+    check_conservation(&[3_333, 3_333, 3_334], any_amount(), 0);
 }
 
 #[kani::proof]
 fn proof_full_conservation_mixed() {
-    check_conservation(&[2_000, 3_000, 5_000], any_amount());
+    check_conservation(&[2_000, 3_000, 5_000], any_amount(), 0);
 }
 
 #[kani::proof]
 fn proof_full_conservation_quarters() {
-    check_conservation(&[2_500, 2_500, 2_500, 2_500], any_amount());
+    check_conservation(&[2_500, 2_500, 2_500, 2_500], any_amount(), 0);
 }
 
 /// Part bounds over the whole `i128` range, at the shares where the
