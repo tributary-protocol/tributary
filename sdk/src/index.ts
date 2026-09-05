@@ -66,8 +66,15 @@ export function decode(code: number): string | undefined {
   return (Errors as Record<number, { message: string }>)[code]?.message;
 }
 
+export interface Multisig {
+  threshold: u32;
+  signers: Array<string>;
+}
+
+export type Controller = {tag: "Single", values: readonly [string]} | {tag: "Multisig", values: readonly [Multisig]};
+
 export interface Split {
-  controller: Option<string>;
+  controller: Option<Controller>;
   recipients: Array<Recipient>;
   shares: Array<u32>;
 }
@@ -84,6 +91,20 @@ export interface Stream {
 }
 
 export type Recipient = {tag: "Account", values: readonly [string]} | {tag: "Split", values: readonly [u64]};
+
+/**
+ * Construct a single-address controller.
+ */
+export function single(address: string): Controller {
+  return { tag: "Single", values: [address] };
+}
+
+/**
+ * Construct a multisig policy controller requiring `threshold` of `signers`.
+ */
+export function multisig(threshold: number, signers: string[]): Controller {
+  return { tag: "Multisig", values: [{ threshold, signers }] };
+}
 
 
 
@@ -144,16 +165,16 @@ export interface Client {
   /**
    * Construct and simulate a create_split transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Registers a new split and returns its id. Shares are basis points
-   * and must sum to exactly 10_000. Passing a controller makes the
-   * split mutable by that address; passing None locks it forever.
+   * and must sum to exactly 10_000. Passing a controller (single address or
+   * multisig policy) makes the split mutable by that controller; passing None locks it forever.
    */
-  create_split: ({creator, recipients, shares, controller}: {creator: string, recipients: Array<Recipient>, shares: Array<u32>, controller: Option<string>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<u64>>>
+  create_split: ({creator, recipients, shares, controller}: {creator: string, recipients: Array<Recipient>, shares: Array<u32>, controller: Option<Controller>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<u64>>>
 
   /**
    * Construct and simulate a update_split transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Replaces the recipients and shares of a mutable split.
+   * Replaces the recipients and shares of a mutable split. If the controller is a multisig, `signers` must list the authorizing signers (at least the threshold).
    */
-  update_split: ({id, recipients, shares}: {id: u64, recipients: Array<Recipient>, shares: Array<u32>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  update_split: ({id, recipients, shares, signers}: {id: u64, recipients: Array<Recipient>, shares: Array<u32>, signers?: Array<string>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a preview_payout transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -164,31 +185,35 @@ export interface Client {
 
   /**
    * Construct and simulate a transfer_control transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Proposes transferring control to a new address (two-step), or locks the
-   * split forever when `new_controller` is `None`.
+   * Proposes transferring control to a new controller (two-step), or locks the
+   * split forever when `new_controller` is `None`. If the current controller is
+   * a multisig, `signers` must list the authorizing signers (at least the threshold).
    */
-  transfer_control: ({id, new_controller}: {id: u64, new_controller: Option<string>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  transfer_control: ({id, new_controller, signers}: {id: u64, new_controller: Option<Controller>, signers?: Array<string>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a accept_control transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Accepts a pending control transfer. Only the proposed controller may
-   * call this, after which they become the split's controller.
+   * call this, after which they become the split's controller. If the proposed
+   * controller is a multisig, `signers` must list the authorizing signers (at least the threshold).
    */
-  accept_control: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  accept_control: ({id, signers}: {id: u64, signers?: Array<string>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a cancel_transfer transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Cancels a pending control transfer. Only the current controller may
-   * call this. Does nothing if no transfer is pending.
+   * call this. Does nothing if no transfer is pending. If the current controller
+   * is a multisig, `signers` must list the authorizing signers (at least the threshold).
    */
-  cancel_transfer: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  cancel_transfer: ({id, signers}: {id: u64, signers?: Array<string>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a close_split transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Closes a split and reclaims its storage. Only the controller can do this,
-   * and only if the split holds no balances.
+   * and only if the split holds no balances. If the controller is a multisig,
+   * `signers` must list the authorizing signers (at least the threshold).
    */
-  close_split: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  close_split: ({id, signers}: {id: u64, signers?: Array<string>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a held_tokens transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -198,7 +223,7 @@ export interface Client {
   /**
    * Construct and simulate a pending_controller transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  pending_controller: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Option<string>>>
+  pending_controller: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Option<Controller>>>
 
   create_stream: ({funder, split_id, token, amount, start_time, end_time}: {funder: string, split_id: u64, token: string, amount: i128, start_time: u64, end_time: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<u64>>>
   get_stream: ({id}: {id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Result<Stream>>>

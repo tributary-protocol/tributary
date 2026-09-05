@@ -9,6 +9,38 @@ import RecipientEditor, {
 } from "./RecipientEditor";
 import FeeHint from "./FeeHint";
 
+function isPolicy(c: any): c is { threshold: number; signers: string[] } {
+  return (
+    c && typeof c === "object" && Array.isArray(c.signers) && typeof c.threshold === "number"
+  );
+}
+
+function controllerSigners(controller: any): string[] {
+  if (!controller) return [];
+  if (typeof controller === "string") return [controller];
+  if (isPolicy(controller)) return controller.signers;
+  return [];
+}
+
+function formatController(c: any): string {
+  if (!c) return "";
+  if (typeof c === "string") return c;
+  if (isPolicy(c)) {
+    return `${c.threshold}/${c.signers.length} [${c.signers.map((s) => s.slice(0, 4)).join(",")}]`;
+  }
+  return String(c);
+}
+
+function parseControllerInput(input: string): any {
+  const trimmed = input.trim();
+  if (/^[GC][A-Z2-7]{55}$/.test(trimmed)) return trimmed;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (isPolicy(parsed)) return parsed;
+  } catch {}
+  throw new Error("Invalid controller format");
+}
+
 function toRows(split: SplitView): Row[] {
   return split.recipients.map((r: Recipient, i: number) => ({
     kind: r.tag === "Account" ? ("address" as const) : ("split" as const),
@@ -31,14 +63,15 @@ export default function ManageSplit({
   const [splitId, setSplitId] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [transferTo, setTransferTo] = useState("");
-  const [pendingTransfer, setPendingTransfer] = useState<string | null>(null);
+  const [pendingTransfer, setPendingTransfer] = useState<any>(null);
   const [confirmLock, setConfirmLock] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const { t } = useTranslation();
   const mine = useMemo(
-    () => splits.filter((s) => s.controller === wallet),
+    () =>
+      splits.filter((s) => wallet && controllerSigners(s.controller).includes(wallet)),
     [splits, wallet],
   );
 
@@ -60,7 +93,7 @@ export default function ManageSplit({
     let cancelled = false;
     walletClient(wallet)
       .pending_controller({ id: BigInt(splitId) })
-      .then(({ result }: { result: string | undefined }) => {
+      .then(({ result }: { result: any }) => {
         if (!cancelled) setPendingTransfer(result ?? null);
       })
       .catch(() => {
@@ -124,12 +157,14 @@ export default function ManageSplit({
   }
 
   async function proposeTransfer() {
-    const to = transferTo.trim();
-    if (!/^G[A-Z2-7]{55}$/.test(to)) {
+    let to: any;
+    try {
+      to = parseControllerInput(transferTo);
+    } catch {
       setMessage(t("controllerFormatError"));
       return;
     }
-    if (to === wallet) {
+    if (typeof to === "string" && to === wallet) {
       setMessage("That address already controls this split.");
       return;
     }
@@ -143,7 +178,7 @@ export default function ManageSplit({
       if (!result.isOk()) return "Transfer proposal rejected.";
       setPendingTransfer(to);
       setTransferTo("");
-      return `Transfer proposed to ${to.slice(0, 4)}…${to.slice(-4)}. They must accept it.`;
+      return `Transfer proposed to ${formatController(to)}. They must accept it.`;
     });
   }
 
@@ -192,17 +227,17 @@ export default function ManageSplit({
   }, [rows, wallet, splitId, t]);
 
   const transferFee = useMemo(() => {
-    if (
-      pendingTransfer !== null ||
-      !transferTo.trim() ||
-      !/^G[A-Z2-7]{55}$/.test(transferTo.trim())
-    ) {
+    if (pendingTransfer !== null || !transferTo.trim()) return null;
+    let newController: any;
+    try {
+      newController = parseControllerInput(transferTo);
+    } catch {
       return null;
     }
     return () =>
       walletClient(wallet!).transfer_control({
         id: BigInt(splitId),
-        new_controller: transferTo.trim(),
+        new_controller: newController,
       });
   }, [pendingTransfer, transferTo, wallet, splitId]);
 
@@ -264,8 +299,7 @@ export default function ManageSplit({
           {pendingTransfer !== null && (
             <div className="row" role="status">
               <span>
-                Transfer pending to {pendingTransfer.slice(0, 4)}…
-                {pendingTransfer.slice(-4)}.
+                Transfer pending to {formatController(pendingTransfer)}.
               </span>
               <button className="ghost" disabled={busy} onClick={cancelTransfer}>
                 Cancel transfer

@@ -2226,3 +2226,352 @@ fn splits_of_paged_lands_exactly_on_last_item() {
     let page = s.client.splits_of_paged(&creator, &2, &1);
     assert_eq!(page, vec![&s.env, id2]);
 }
+
+mod multisig_account {
+    use soroban_sdk::auth::{AccountSignatures, AuthContext, Ed25519Signature, Signature};
+    use soroban_sdk::{contract, contractimpl, contracttype, Account, Address, BytesN, Env, Vec};
+
+    #[contracttype]
+    #[derive(Clone)]
+    pub enum DataKey {
+        Signers,
+        Threshold,
+        UsedNonce(u64),
+    }
+
+    #[contract]
+    pub struct MultisigAccount;
+
+    #[contractimpl]
+    impl MultisigAccount {
+        pub fn init(env: Env, signers: Vec<BytesN<32>>, threshold: u32) {
+            env.storage().instance().set(&DataKey::Signers, &signers);
+            env.storage().instance().set(&DataKey::Threshold, &threshold);
+        }
+
+        pub fn remove_signer(env: Env, signer: BytesN<32>) {
+            let signers: Vec<BytesN<32>> = env.storage().instance().get(&DataKey::Signers).unwrap();
+            let mut updated: Vec<BytesN<32>> = Vec::new(&env);
+            for existing in signers.iter() {
+                if existing != signer {
+                    updated.push_back(existing);
+                }
+            }
+            env.storage().instance().set(&DataKey::Signers, &updated);
+        }
+    }
+
+    #[contractimpl]
+    impl Account for MultisigAccount {
+        fn __check_auth(
+            env: Env,
+            _payload: BytesN<32>,
+            signatures: Vec<Signature>,
+            auth_context: Vec<AuthContext>,
+        ) -> Result<(), soroban_sdk::Error> {
+            let signers: Vec<BytesN<32>> = env.storage().instance().get(&DataKey::Signers).unwrap();
+            let threshold: u32 = env.storage().instance().get(&DataKey::Threshold).unwrap_or(0);
+            let nonce = auth_context.get(0).map(|ctx| ctx.nonce).unwrap_or(0);
+            if env.storage().instance().get::<_, bool>(&DataKey::UsedNonce(nonce)).unwrap_or(false) {
+                return Err(soroban_sdk::Error::from_contract_error(2));
+            }
+            let mut count: u32 = 0;
+            let mut seen: Vec<BytesN<32>> = Vec::new(&env);
+            for sig in signatures.iter() {
+                if let Signature::Ed25519(ed_sig) = sig {
+                    if signers.contains(&ed_sig.public_key) && !seen.contains(&ed_sig.public_key) {
+                        seen.push_back(ed_sig.public_key.clone());
+                        count += 1;
+                    }
+                }
+            }
+            if count >= threshold {
+                env.storage().instance().set(&DataKey::UsedNonce(nonce), &true);
+                Ok(())
+            } else {
+                Err(soroban_sdk::Error::from_contract_error(1))
+            }
+        }
+    }
+}
+
+fn test_pubkey(env: &Env, b: u8) -> soroban_sdk::BytesN<32> {
+    let mut arr = [0u8; 32];
+    arr[0] = b;
+    soroban_sdk::BytesN::from_array(env, &arr)
+}
+
+fn multisig_auth(
+    env: &Env,
+    controller: &Address,
+    keys: &[soroban_sdk::BytesN<32>],
+) -> soroban_sdk::auth::AuthEntry {
+    let mut sigs = soroban_sdk::Vec::new(env);
+    for key in keys {
+        sigs.push_back(soroban_sdk::auth::Signature::Ed25519(
+            soroban_sdk::auth::Ed25519Signature {
+                public_key: key.clone(),
+                signature: soroban_sdk::BytesN::from_array(env, &[0u8; 64]),
+            },
+        ));
+    }
+    soroban_sdk::auth::AuthEntry {
+        address: controller.clone(),
+        nonce: 0,
+        signature: soroban_sdk::auth::Signature::Account(
+            soroban_sdk::auth::AccountSignatures {
+                account: controller.clone(),
+                signatures: sigs,
+            },
+        ),
+    }
+}
+
+#[test]
+fn threshold_controller_update_split_requires_m_of_n() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    let pk1 = test_pubkey(&s.env, 1);
+    let pk2 = test_pubkey(&s.env, 2);
+    let pk3 = test_pubkey(&s.env, 3);
+    let multisig_id = s.env.register(multisig_account::MultisigAccount, ());
+    let multisig_client = multisig_account::MultisigAccountClient::new(&s.env, &multisig_id);
+    multisig_client.init(
+        &soroban_sdk::vec![&s.env, pk1.clone(), pk2.clone(), pk3.clone()],
+        &2u32,
+    );
+
+    let id = s.client.create_split(
+        &creator,
+        &soroban_sdk::vec![&s.env, acct(&a)],
+        &soroban_sdk::vec![&s.env, 10_000],
+        &Some(multisig_id.clone()),
+    );
+
+    // One signature is below the 2-of-3 threshold.
+    s.env.set_auths(&[multisig_auth(&s.env, &multisig_id, &[pk1.clone()])]);
+    let below = s.client.try_update_split(
+        &id,
+        &soroban_sdk::vec![&s.env, acct(&a), acct(&b)],
+        &soroban_sdk::vec![&s.env, 5_000, 5_000],
+    );
+    assert!(below.is_err());
+    assert_eq!(s.client.get_split(&id).recipients, soroban_sdk::vec![&s.env, acct(&a)]);
+
+    // A non-signer key does not count toward the threshold.
+    let unknown = test_pubkey(&s.env, 99);
+    s.env.set_auths(&[multisig_auth(&s.env, &multisig_id, &[pk1.clone(), unknown])]);
+    let wrong = s.client.try_update_split(
+        &id,
+        &soroban_sdk::vec![&s.env, acct(&a), acct(&b)],
+        &soroban_sdk::vec![&s.env, 5_000, 5_000],
+    );
+    assert!(wrong.is_err());
+
+    // Two valid signatures meet the threshold.
+    s.env.set_auths(&[multisig_auth(&s.env, &multisig_id, &[pk1, pk2])]);
+    let ok = s.client.try_update_split(
+        &id,
+        &soroban_sdk::vec![&s.env, acct(&a), acct(&b)],
+        &soroban_sdk::vec![&s.env, 5_000, 5_000],
+    );
+    assert!(ok.is_ok());
+    assert_eq!(s.client.get_split(&id).recipients, soroban_sdk::vec![&s.env, acct(&a), acct(&b)]);
+    assert_eq!(s.client.get_split(&id).shares, soroban_sdk::vec![&s.env, 5_000, 5_000]);
+}
+
+#[test]
+fn threshold_controller_transfer_control_requires_m_of_n() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let next = Address::generate(&s.env);
+
+    let pk1 = test_pubkey(&s.env, 1);
+    let pk2 = test_pubkey(&s.env, 2);
+    let pk3 = test_pubkey(&s.env, 3);
+    let multisig_id = s.env.register(multisig_account::MultisigAccount, ());
+    let multisig_client = multisig_account::MultisigAccountClient::new(&s.env, &multisig_id);
+    multisig_client.init(
+        &soroban_sdk::vec![&s.env, pk1.clone(), pk2.clone(), pk3.clone()],
+        &2u32,
+    );
+
+    let id = s.client.create_split(
+        &creator,
+        &soroban_sdk::vec![&s.env, acct(&a)],
+        &soroban_sdk::vec![&s.env, 10_000],
+        &Some(multisig_id.clone()),
+    );
+
+    // One signature cannot move the transfer forward.
+    s.env.set_auths(&[multisig_auth(&s.env, &multisig_id, &[pk1.clone()])]);
+    let below = s.client.try_transfer_control(&id, &Some(next.clone()));
+    assert!(below.is_err());
+    assert_eq!(s.client.pending_controller(&id), None);
+
+    // Two signatures can propose the transfer.
+    s.env.set_auths(&[multisig_auth(&s.env, &multisig_id, &[pk1, pk2])]);
+    let ok = s.client.try_transfer_control(&id, &Some(next.clone()));
+    assert!(ok.is_ok());
+    assert_eq!(s.client.pending_controller(&id), Some(next.clone()));
+}
+
+#[test]
+fn threshold_controller_duplicate_signatures_do_not_meet_threshold() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    let pk1 = test_pubkey(&s.env, 1);
+    let pk2 = test_pubkey(&s.env, 2);
+    let multisig_id = s.env.register(multisig_account::MultisigAccount, ());
+    let multisig_client = multisig_account::MultisigAccountClient::new(&s.env, &multisig_id);
+    multisig_client.init(
+        &soroban_sdk::vec![&s.env, pk1.clone(), pk2.clone()],
+        &2u32,
+    );
+
+    let id = s.client.create_split(
+        &creator,
+        &soroban_sdk::vec![&s.env, acct(&a)],
+        &soroban_sdk::vec![&s.env, 10_000],
+        &Some(multisig_id.clone()),
+    );
+
+    s.env.set_auths(&[multisig_auth(&s.env, &multisig_id, &[pk1.clone(), pk1])]);
+    let result = s.client.try_update_split(
+        &id,
+        &soroban_sdk::vec![&s.env, acct(&a), acct(&b)],
+        &soroban_sdk::vec![&s.env, 5_000, 5_000],
+    );
+    assert!(result.is_err());
+    assert_eq!(s.client.get_split(&id).recipients, soroban_sdk::vec![&s.env, acct(&a)]);
+}
+
+#[test]
+fn threshold_controller_rejects_replayed_authorization() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    let pk1 = test_pubkey(&s.env, 1);
+    let pk2 = test_pubkey(&s.env, 2);
+    let multisig_id = s.env.register(multisig_account::MultisigAccount, ());
+    let multisig_client = multisig_account::MultisigAccountClient::new(&s.env, &multisig_id);
+    multisig_client.init(
+        &soroban_sdk::vec![&s.env, pk1.clone(), pk2.clone()],
+        &2u32,
+    );
+
+    let id = s.client.create_split(
+        &creator,
+        &soroban_sdk::vec![&s.env, acct(&a)],
+        &soroban_sdk::vec![&s.env, 10_000],
+        &Some(multisig_id.clone()),
+    );
+
+    let auth = multisig_auth(&s.env, &multisig_id, &[pk1.clone(), pk2.clone()]);
+
+    s.env.set_auths(&[auth.clone()]);
+    let first = s.client.try_update_split(
+        &id,
+        &soroban_sdk::vec![&s.env, acct(&a), acct(&b)],
+        &soroban_sdk::vec![&s.env, 5_000, 5_000],
+    );
+    assert!(first.is_ok());
+    assert_eq!(s.client.get_split(&id).recipients, soroban_sdk::vec![&s.env, acct(&a), acct(&b)]);
+
+    // Reusing the same authorization must not authorize a second action.
+    s.env.set_auths(&[auth]);
+    let replay = s.client.try_update_split(
+        &id,
+        &soroban_sdk::vec![&s.env, acct(&a)],
+        &soroban_sdk::vec![&s.env, 10_000],
+    );
+    assert!(replay.is_err());
+    assert_eq!(s.client.get_split(&id).recipients, soroban_sdk::vec![&s.env, acct(&a), acct(&b)]);
+}
+
+#[test]
+fn threshold_controller_removed_signer_cannot_authorize() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    let pk1 = test_pubkey(&s.env, 1);
+    let pk2 = test_pubkey(&s.env, 2);
+    let pk3 = test_pubkey(&s.env, 3);
+    let multisig_id = s.env.register(multisig_account::MultisigAccount, ());
+    let multisig_client = multisig_account::MultisigAccountClient::new(&s.env, &multisig_id);
+    multisig_client.init(
+        &soroban_sdk::vec![&s.env, pk1.clone(), pk2.clone(), pk3.clone()],
+        &2u32,
+    );
+    multisig_client.remove_signer(&pk3.clone());
+
+    let id = s.client.create_split(
+        &creator,
+        &soroban_sdk::vec![&s.env, acct(&a)],
+        &soroban_sdk::vec![&s.env, 10_000],
+        &Some(multisig_id.clone()),
+    );
+
+    s.env.set_auths(&[multisig_auth(&s.env, &multisig_id, &[pk1.clone(), pk3])]);
+    let below = s.client.try_update_split(
+        &id,
+        &soroban_sdk::vec![&s.env, acct(&a), acct(&b)],
+        &soroban_sdk::vec![&s.env, 5_000, 5_000],
+    );
+    assert!(below.is_err());
+
+    s.env.set_auths(&[multisig_auth(&s.env, &multisig_id, &[pk1, pk2])]);
+    let ok = s.client.try_update_split(
+        &id,
+        &soroban_sdk::vec![&s.env, acct(&a), acct(&b)],
+        &soroban_sdk::vec![&s.env, 5_000, 5_000],
+    );
+    assert!(ok.is_ok());
+}
+
+#[test]
+fn threshold_controller_transfer_accept_requires_new_controller_auth() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+
+    let pk1 = test_pubkey(&s.env, 1);
+    let pk2 = test_pubkey(&s.env, 2);
+    let current_ms = s.env.register(multisig_account::MultisigAccount, ());
+    let current_client = multisig_account::MultisigAccountClient::new(&s.env, &current_ms);
+    current_client.init(&soroban_sdk::vec![&s.env, pk1.clone(), pk2.clone()], &2u32);
+
+    let next_pk1 = test_pubkey(&s.env, 11);
+    let next_pk2 = test_pubkey(&s.env, 12);
+    let next_ms = s.env.register(multisig_account::MultisigAccount, ());
+    let next_client = multisig_account::MultisigAccountClient::new(&s.env, &next_ms);
+    next_client.init(&soroban_sdk::vec![&s.env, next_pk1.clone(), next_pk2.clone()], &2u32);
+
+    let id = s.client.create_split(
+        &creator,
+        &soroban_sdk::vec![&s.env, acct(&a)],
+        &soroban_sdk::vec![&s.env, 10_000],
+        &Some(current_ms.clone()),
+    );
+
+    s.env.set_auths(&[multisig_auth(&s.env, &current_ms, &[pk1, pk2])]);
+    let propose = s.client.try_transfer_control(&id, &Some(next_ms.clone()));
+    assert!(propose.is_ok());
+    assert_eq!(s.client.pending_controller(&id), Some(next_ms.clone()));
+
+    s.env.set_auths(&[multisig_auth(&s.env, &next_ms, &[next_pk1, next_pk2])]);
+    let accept = s.client.try_accept_control(&id);
+    assert!(accept.is_ok());
+    assert_eq!(s.client.get_split(&id).controller, Some(next_ms));
+}

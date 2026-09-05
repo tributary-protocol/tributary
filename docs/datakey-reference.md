@@ -38,7 +38,7 @@ Stores the complete configuration for a specific split. The `Split` struct conta
 
 - `recipients`: `Vec<Recipient>` - List of recipients (accounts or child splits)
 - `shares`: `Vec<u32>` - Basis point shares for each recipient (must sum to 10,000)
-- `controller`: `Option<Address>` - Optional controller address for mutable splits
+- `controller`: `Option<Controller>` - Optional controller for mutable splits; either a single address or an M-of-N threshold policy
 
 **Usage:**
 - Written in `create_split` when a new split is created
@@ -119,10 +119,24 @@ Stores the list of token addresses that have non-zero balances for a specific sp
 ### PendingController
 
 **Storage Type:** Persistent storage  
-**Value Type:** `Address`  
+**Value Type:** `Controller`  
 **Key Parameter:** `u64` (split ID)
 
-Stores the pending controller address during a two-step control transfer. This variant exists only while a transfer is pending and is removed after the transfer is accepted or cancelled.
+Stores the pending controller (single address or threshold policy) during a two-step control transfer. This variant exists only while a transfer is pending and is removed after the transfer is accepted or cancelled.
+
+### PendingAction
+
+**Storage Type:** Persistent storage  
+**Value Type:** `PendingAction` struct  
+**Key Parameter:** `(u64, u32)` (split ID, action ID/nonce)
+
+Stores a proposed controller action awaiting M-of-N approval. The struct contains the proposed change (e.g., new recipients/shares, controller transfer), the signer set version it applies to, and the set of approvals collected so far. This prevents replay attacks by unique action IDs and ensures signer-set changes invalidate in-flight proposals.
+
+**Usage:**
+- Created in `propose_controller_action` when a threshold controller initiates a change
+- Updated in `approve_controller_action` as signers approve
+- Executed and removed in `execute_controller_action` when the threshold is reached
+- All removed if the signer set changes before execution
 
 ---
 

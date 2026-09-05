@@ -21,7 +21,9 @@ export default function CreateSplit({
     { kind: "address", value: "", percent: "60" },
     { kind: "address", value: "", percent: "40" },
   ]);
-  const [editable, setEditable] = useState(true);
+  const [controllerType, setControllerType] = useState<"none" | "single" | "threshold">("single");
+  const [threshold, setThreshold] = useState(2);
+  const [signers, setSigners] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -35,6 +37,14 @@ export default function CreateSplit({
     );
   }
 
+  const controller = useMemo(() => {
+    if (controllerType === "none") return undefined;
+    if (controllerType === "single") return wallet ?? undefined;
+    const signerList = signers.split(",").map((s) => s.trim()).filter(Boolean);
+    if (signerList.length === 0) return undefined;
+    return { threshold, signers: signerList };
+  }, [controllerType, wallet, threshold, signers]);
+
   const assembleFee = useMemo(() => {
     if (!wallet || rowsError(rows, t)) return null;
     return () =>
@@ -42,9 +52,9 @@ export default function CreateSplit({
         creator: wallet,
         recipients: rows.map(toRecipient),
         shares: toShares(rows),
-        controller: editable ? wallet : undefined,
+        controller,
       });
-  }, [wallet, rows, editable]);
+  }, [wallet, rows, controller]);
 
   const templates: [string, number[]][] = [
     ["50/50", [50, 50]],
@@ -71,7 +81,7 @@ export default function CreateSplit({
         creator: wallet,
         recipients: rows.map(toRecipient),
         shares: toShares(rows),
-        controller: editable ? wallet : undefined,
+        controller,
       });
       const { result } = await tx.signAndSend();
       setMessage(
@@ -102,14 +112,42 @@ export default function CreateSplit({
         ))}
       </div>
       <RecipientEditor rows={rows} onChange={setRows} />
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={editable}
-          onChange={(e) => setEditable(e.target.checked)}
-        />
-        {t("createEditableLabel")}
-      </label>
+      <div className="controller-config">
+        <label className="field">
+          <span>{t("controllerLabel")}</span>
+          <select
+            value={controllerType}
+            onChange={(e) =>
+              setControllerType(e.target.value as "none" | "single" | "threshold")
+            }
+          >
+            <option value="none">{t("controllerNone")}</option>
+            <option value="single">{t("controllerSingle")}</option>
+            <option value="threshold">{t("controllerThreshold")}</option>
+          </select>
+        </label>
+        {controllerType === "threshold" && (
+          <>
+            <label className="field">
+              <span>{t("thresholdLabel")}</span>
+              <input
+                type="number"
+                min="1"
+                value={threshold}
+                onChange={(e) => setThreshold(parseInt(e.target.value, 10) || 1)}
+              />
+            </label>
+            <label className="field">
+              <span>{t("signersLabel")}</span>
+              <textarea
+                placeholder={t("signersPlaceholder")}
+                value={signers}
+                onChange={(e) => setSigners(e.target.value)}
+              />
+            </label>
+          </>
+        )}
+      </div>
       <p className="hint" title="When a payment cannot be divided evenly, the tiny remainder (dust) goes to the last recipient so the full amount always lands somewhere.">
         ⓘ Rounding dust goes to the last recipient.
       </p>
