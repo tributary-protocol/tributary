@@ -21,7 +21,7 @@ export function persistLanguage(lang: Language) {
   localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
 }
 
-const translations = {
+export const translations = {
   en: {
     // Header & Navigation
     connectWallet: "Connect Freighter",
@@ -61,6 +61,12 @@ const translations = {
     bpsOfTotal: "{bps} of 10,000 bps",
     unitBpsTitle: "Basis points (100 bps = 1%)",
     unitPctTitle: "Percentage of the total payment. Stored on-chain as basis points.",
+    recipientSharesLabel: "Recipient shares",
+    basisPointsExplainer: "Shares are stored in basis points: 1 basis point is 0.01%, so 10,000 basis points equals 100%. Enter shares here as percentages.",
+    ofTotal: "of 100%",
+    duplicateAddressHint: "This address is already listed as a recipient.",
+    duplicateRecipientNote: "Duplicate recipients: the same address appears more than once.",
+    duplicateRecipientError: "Duplicate recipients: the same address appears more than once.",
     // PaySplit
     payTitle: "Pay through a split",
     chooseSplit: "Choose split",
@@ -75,6 +81,9 @@ const translations = {
     trustlineWarningHint: "The payment is blocked until all recipients can receive this token.",
     trustlineNoticeTitle: "Trustline check inconclusive",
     trustlineNoticeHint: "Could not verify trustlines for some recipients. The payment may fail if they cannot receive this token.",
+    checkingTrustlines: "Checking recipient trustlines…",
+    payoutPreview: "Payout preview",
+    dustExplainer: "Dust is the tiny remainder left when a payment cannot be divided exactly. It goes to the last recipient so no funds are left behind.",
     // EscrowCard
     escrowTitle: "Escrow",
     escrowDesc: "Park funds in a split now, pay everyone out later.",
@@ -808,7 +817,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const t = (key: string, variables?: Record<string, string | number>): string => {
     const dict = translations[language] || translations["en"];
-    let text = dict[key as keyof typeof dict] || key;
+    // A key a locale has not translated yet falls back to English, not to the raw key.
+    let text = dict[key as keyof typeof dict] || translations.en[key as keyof typeof translations.en] || key;
     if (variables) {
       Object.entries(variables).forEach(([k, v]) => {
         text = text.replace(`{${k}}`, String(v));

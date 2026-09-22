@@ -26,14 +26,14 @@ export function rowsError(
     return t ? t("sharesTotalError") : "Shares must add up to 100%.";
   }
   if (rows.some((r) => r.value.trim() === "")) {
-    return t ? t("emptyRecipientError") : "Every recipient needs an address or split id.";
+    return t ? t("recipientRequiredError") : "Every recipient needs an address or split id.";
   }
   if (
     rows.some(
       (r) => r.kind === "address" && !/^G[A-Z2-7]{55}$/.test(r.value.trim()),
     )
   ) {
-    return t ? t("invalidAddressError") : "Recipient addresses must be G… account keys.";
+    return t ? t("recipientFormatError") : "Recipient addresses must be G… account keys.";
   }
   if (hasDuplicateRecipients(rows)) {
     return t ? t("duplicateRecipientError") : "Duplicate recipients: the same address appears more than once.";
