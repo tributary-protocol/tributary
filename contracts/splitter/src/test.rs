@@ -2088,6 +2088,35 @@ fn single_recipient_gets_full_amount() {
 }
 
 #[test]
+fn grandchild_credit_through_two_levels_of_nesting() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let leaf_a = Address::generate(&s.env);
+    let leaf_b = Address::generate(&s.env);
+    let leaf_c = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 10_000);
+
+    // Level 2 (grandchild)
+    let grandchild = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf_a), acct(&leaf_b)],
+        &vec![&s.env, 5_000, 5_000],
+        &None,
+    );
+
+    // Level 1 (child)
+    let child = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&leaf_c), Recipient::Split(grandchild)],
+        &vec![&s.env, 4_000, 6_000],
+        &None,
+    );
+
+    // Level 0 (parent)
+    let parent = s.client.create_split(
+        &creator,
+        &vec![&s.env, Recipient::Split(child)],
 fn splits_of_preserves_creation_order() {
     let s = setup();
     let creator = Address::generate(&s.env);
@@ -2163,6 +2192,25 @@ fn splits_of_paged_limit_zero() {
         &None,
     );
 
+    s.client.deposit(&payer, &parent, &token_id, &1_000);
+
+    // Distribute with depth=2 (parent, child, grandchild)
+    let amount = s.client.distribute_cascade(&parent, &token_id, &2);
+    assert_eq!(amount, 1_000);
+
+    // Parent gets 1_000, 100% goes to child.
+    // Child gets 1_000, 40% (400) goes to leaf_c, 60% (600) goes to grandchild.
+    // Grandchild gets 600, 50% (300) goes to leaf_a, 50% (300) goes to leaf_b.
+
+    assert_eq!(token_client.balance(&leaf_c), 400);
+    assert_eq!(token_client.balance(&leaf_a), 300);
+    assert_eq!(token_client.balance(&leaf_b), 300);
+
+    // Balances in contract should be 0
+    assert_eq!(s.client.balance(&parent, &token_id), 0);
+    assert_eq!(s.client.balance(&child, &token_id), 0);
+    assert_eq!(s.client.balance(&grandchild, &token_id), 0);
+    assert_eq!(token_client.balance(&s.client.address), 0);
     let page = s.client.splits_of_paged(&creator, &0, &0);
     assert_eq!(page, vec![&s.env]);
 }
