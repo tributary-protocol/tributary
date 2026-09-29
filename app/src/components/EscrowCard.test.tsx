@@ -20,7 +20,6 @@ const mocks = vi.hoisted(() => ({
   balance: vi.fn(),
   deposit: vi.fn(),
   distribute: vi.fn(),
-  signAndSend: vi.fn(),
   readClient: vi.fn(),
   walletClient: vi.fn(),
   toStroops: vi.fn(),
