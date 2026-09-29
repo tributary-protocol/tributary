@@ -36,19 +36,19 @@ vi.mock("../lib/tributary", () => ({
     { code: "XLM", contract: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC", decimals: 7 },
     { code: "USDC", contract: "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA", decimals: 6 },
   ],
-  SplitView: {},
 }));
 
 vi.mock("./FeeHint", () => ({ default: () => null }));
 vi.mock("./TokenPicker", () => ({ default: () => null }));
 
+import type { SplitView } from "../lib/tributary";
 import EscrowCard from "./EscrowCard";
 
 const WALLET = "G".concat("A".repeat(55));
 const RECIPIENT_ONE = "G".concat("B".repeat(55));
 const RECIPIENT_TWO = "G".concat("C".repeat(55));
 
-const SPLIT = {
+const SPLIT: SplitView = {
   id: 7n,
   recipients: [
     { tag: "Account", values: [RECIPIENT_ONE] },
