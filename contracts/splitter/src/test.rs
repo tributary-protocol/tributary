@@ -275,9 +275,7 @@ fn accepts_max_recipients_boundary() {
         }
     }
 
-    let id = s
-        .client
-        .create_split(&creator, &recipients, &shares, &None);
+    let id = s.client.create_split(&creator, &recipients, &shares, &None);
     assert_eq!(id, 0);
 
     let split = s.client.get_split(&id);
