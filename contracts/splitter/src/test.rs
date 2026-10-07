@@ -259,6 +259,31 @@ fn rejects_too_many_recipients() {
 }
 
 #[test]
+fn accepts_max_recipients_boundary() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let mut recipients = vec![&s.env];
+    let mut shares = vec![&s.env];
+
+    // Distribute 10_000 shares across exactly 32 recipients (16 * 313 + 16 * 312 = 10_000)
+    for i in 0..32 {
+        recipients.push_back(acct(&Address::generate(&s.env)));
+        if i < 16 {
+            shares.push_back(313u32);
+        } else {
+            shares.push_back(312u32);
+        }
+    }
+
+    let id = s.client.create_split(&creator, &recipients, &shares, &None);
+    assert_eq!(id, 0);
+
+    let split = s.client.get_split(&id);
+    assert_eq!(split.recipients.len(), 32);
+    assert_eq!(split.shares.len(), 32);
+}
+
+#[test]
 fn pay_distributes_by_shares() {
     let s = setup();
     let creator = Address::generate(&s.env);
