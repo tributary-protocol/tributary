@@ -6,8 +6,8 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "start": "npm run build && node dist/royalties-split.js",
+    "build": "node init && tsc",
+    "start": "node init && npm run build && node dist/royalties-split.js",
     "test": "npm run build && node --test dist/*.test.js"
   },
   "dependencies": {

@@ -3,8 +3,6 @@ node_modules/
 dist/
 test_snapshots/
 .stellar/
-.env
-.env.*
 !.env.example
 
 .vercel
@@ -13,3 +11,4 @@ indexer/state.json
 indexer/dist/
 indexer/.env
 *.tsbuildinfo
+config.bat

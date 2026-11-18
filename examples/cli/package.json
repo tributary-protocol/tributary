@@ -9,8 +9,8 @@
     "tributary-cli": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
-    "start": "npm run build && node dist/cli.js",
+    "build": "node init && tsc",
+    "start": "node init && npm run build && node dist/cli.js",
     "test": "npm run build && node --test dist/*.test.js"
   },
   "dependencies": {
