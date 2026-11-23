@@ -25,6 +25,18 @@ contractmeta!(
 pub const MAX_CASCADE_DEPTH: u32 = 5;
 pub const MAX_DISTRIBUTE_TOKENS: u32 = 10;
 
+/// Maximum depth of the child-split graph that `validate` will walk when
+/// checking for routing cycles.
+///
+/// `validate` rejects any child chain in which the split's own id is
+/// reachable within this many hops, so a cycle such as A -> B -> A (built in
+/// two steps via `update_split`) or A -> B -> C -> A is refused with
+/// `Error::BadChildSplit`. Chains deeper than this bound are also treated as
+/// cycles and rejected, which keeps the check within the resource budget and
+/// gives recursive distribution (e.g. `distribute_all`, #49) a safe recursion
+/// bound: no accepted routing graph can be deeper than `MAX_SPLIT_DEPTH`.
+pub const MAX_SPLIT_DEPTH: u32 = 5;
+
 const DAY_LEDGERS: u32 = 17_280;
 const TTL_THRESHOLD: u32 = 30 * DAY_LEDGERS;
 const TTL_EXTEND_TO: u32 = 120 * DAY_LEDGERS;
@@ -65,8 +77,11 @@ pub enum Error {
     /// Code 9. More than `MAX_RECIPIENTS` (32) recipients were supplied.
     /// Raised by `create_split` and `update_split` (via `validate`).
     TooManyRecipients = 9,
-    /// Code 10. A `Recipient::Split(child)` reference is unknown, or a split
-    /// references itself (directly or as its own update target).
+    /// Code 10. A `Recipient::Split(child)` reference is unknown, or the
+    /// routing graph contains a cycle: a split references itself directly, or
+    /// its own id is reachable transitively through child splits (e.g. A -> B
+    /// -> A assembled via `update_split`). Chains deeper than
+    /// `MAX_SPLIT_DEPTH` are also rejected.
     /// Raised by `create_split` and `update_split` (via `validate`).
     BadChildSplit = 10,
     /// An arithmetic path produced a value that does not fit the i128 the
@@ -1020,6 +1035,11 @@ fn validate(
             if child == own_id || !exists {
                 return Err(Error::BadChildSplit);
             }
+            // Reject transitive cycles (A -> B -> A, A -> B -> C -> A, ...)
+            // and chains deeper than `MAX_SPLIT_DEPTH`.
+            if reaches(env, child, own_id, MAX_SPLIT_DEPTH) {
+                return Err(Error::BadChildSplit);
+            }
         }
     }
     // Share checks live in `math` so Kani can prove them over all inputs.
@@ -1029,6 +1049,36 @@ fn validate(
         math::ShareError::ZeroShare => Error::ZeroShare,
         math::ShareError::BadShareTotal => Error::BadShareTotal,
     })
+}
+
+/// Returns true if `target` is reachable from `start` through `Recipient::Split`
+/// edges within `max_depth` hops, or if the walk would exceed `max_depth`
+/// (an over-deep chain is treated as a cycle so the routing graph stays
+/// bounded). Missing splits terminate that branch.
+fn reaches(env: &Env, start: u64, target: u64, max_depth: u32) -> bool {
+    if max_depth == 0 {
+        // Cannot descend further: treat as a cycle to keep the graph bounded.
+        return true;
+    }
+    let key = DataKey::Split(start);
+    let split: Split = match env.storage().persistent().get(&key) {
+        Some(s) => s,
+        None => return false,
+    };
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+    for recipient in split.recipients.iter() {
+        if let Recipient::Split(child) = recipient {
+            if child == target {
+                return true;
+            }
+            if reaches(env, child, target, max_depth - 1) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn amounts(env: &Env, split: &Split, amount: i128) -> Result<Vec<i128>, Error> {

@@ -635,6 +635,164 @@ fn rejects_missing_or_self_referencing_children() {
 }
 
 #[test]
+fn rejects_two_step_cycle_built_through_update_split() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    let split_a = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &Some(controller.clone()),
+    );
+    let split_b = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&b)],
+        &vec![&s.env, 10_000],
+        &Some(controller.clone()),
+    );
+
+    // A -> B is fine on its own: B exists and B != A.
+    s.client.update_split(
+        &split_a,
+        &vec![&s.env, acct(&a), Recipient::Split(split_b)],
+        &vec![&s.env, 5_000, 5_000],
+    );
+
+    // Closing the loop B -> A must be rejected.
+    let cycle = s.client.try_update_split(
+        &split_b,
+        &vec![&s.env, acct(&b), Recipient::Split(split_a)],
+        &vec![&s.env, 5_000, 5_000],
+    );
+    assert_eq!(cycle, Err(Ok(Error::BadChildSplit)));
+}
+
+#[test]
+fn rejects_three_step_cycle_built_through_update_split() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+    let c = Address::generate(&s.env);
+
+    let split_a = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a)],
+        &vec![&s.env, 10_000],
+        &Some(controller.clone()),
+    );
+    let split_b = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&b)],
+        &vec![&s.env, 10_000],
+        &Some(controller.clone()),
+    );
+    let split_c = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&c)],
+        &vec![&s.env, 10_000],
+        &Some(controller.clone()),
+    );
+
+    // A -> B -> C is acyclic and accepted.
+    s.client.update_split(
+        &split_a,
+        &vec![&s.env, acct(&a), Recipient::Split(split_b)],
+        &vec![&s.env, 5_000, 5_000],
+    );
+    s.client.update_split(
+        &split_b,
+        &vec![&s.env, acct(&b), Recipient::Split(split_c)],
+        &vec![&s.env, 5_000, 5_000],
+    );
+
+    // Closing the loop C -> A must be rejected.
+    let cycle = s.client.try_update_split(
+        &split_c,
+        &vec![&s.env, acct(&c), Recipient::Split(split_a)],
+        &vec![&s.env, 5_000, 5_000],
+    );
+    assert_eq!(cycle, Err(Ok(Error::BadChildSplit)));
+}
+
+#[test]
+fn accepts_acyclic_nested_split() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+    let a = Address::generate(&s.env);
+    let b = Address::generate(&s.env);
+
+    let split_b = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&b)],
+        &vec![&s.env, 10_000],
+        &None,
+    );
+    let split_a = s.client.create_split(
+        &creator,
+        &vec![&s.env, acct(&a), Recipient::Split(split_b)],
+        &vec![&s.env, 5_000, 5_000],
+        &Some(controller),
+    );
+
+    let split = s.client.get_split(&split_a);
+    assert_eq!(
+        split.recipients,
+        vec![&s.env, acct(&a), Recipient::Split(split_b)]
+    );
+}
+
+#[test]
+fn rejects_cycle_beyond_max_split_depth() {
+    let s = setup();
+    let creator = Address::generate(&s.env);
+    let controller = Address::generate(&s.env);
+    let leaf = Address::generate(&s.env);
+
+    // Build a chain of MAX_SPLIT_DEPTH + 1 splits, each pointing at the next.
+    let mut ids = vec![&s.env];
+    let mut previous: Option<u64> = None;
+    for _ in 0..=MAX_SPLIT_DEPTH {
+        let recipients = match previous {
+            Some(child) => vec![&s.env, Recipient::Split(child)],
+            None => vec![&s.env, acct(&leaf)],
+        };
+        let shares = match previous {
+            Some(_) => vec![&s.env, 10_000],
+            None => vec![&s.env, 10_000],
+        };
+        let id = s.client.create_split(
+            &creator,
+            &recipients,
+            &shares,
+            &Some(controller.clone()),
+        );
+        ids.push_back(id);
+        previous = Some(id);
+    }
+
+    // The chain itself is acyclic and accepted.
+    let first = ids.get_unchecked(0);
+    let last = ids.get_unchecked(ids.len() - 1);
+    assert_ne!(first, last);
+
+    // Linking the last split back to the first closes a cycle deeper than the
+    // documented bound, so it must be rejected.
+    let cycle = s.client.try_update_split(
+        &last,
+        &vec![&s.env, Recipient::Split(first)],
+        &vec![&s.env, 10_000],
+    );
+    assert_eq!(cycle, Err(Ok(Error::BadChildSplit)));
+}
+
+#[test]
 fn pay_unknown_split_fails() {
     let s = setup();
     let payer = Address::generate(&s.env);
