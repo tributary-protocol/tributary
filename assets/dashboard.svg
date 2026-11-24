@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="620" viewBox="0 0 880 620" role="img" aria-label="Tributary dashboard screenshot">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="0%" r="60%">
+      <stop offset="0%" stop-color="rgba(76,195,255,0.07)"/>
+      <stop offset="70%" stop-color="transparent"/>
+    </radialGradient>
+    <clipPath id="screen">
+      <rect width="880" height="620" rx="12"/>
+    </clipPath>
+  </defs>
+
+  <!-- background -->
+  <rect width="880" height="620" rx="12" fill="#0b1220"/>
+  <rect width="880" height="420" fill="url(#glow)" clip-path="url(#screen)"/>
+
+  <!-- header bar -->
+  <rect width="880" height="56" fill="rgba(11,18,32,0.92)"/>
+  <rect y="55" width="880" height="1" fill="#1f2c45"/>
+
+  <!-- logo mark -->
+  <rect x="20" y="12" width="32" height="32" rx="8" fill="#111a2c" stroke="#1f2c45" stroke-width="1"/>
+  <circle cx="36" cy="28" r="7" fill="none" stroke="#4cc3ff" stroke-width="2"/>
+  <line x1="36" y1="21" x2="36" y2="35" stroke="#4cc3ff" stroke-width="1.5"/>
+  <line x1="29" y1="28" x2="43" y2="28" stroke="#4cc3ff" stroke-width="1.5"/>
+
+  <!-- brand name -->
+  <text x="60" y="33" font-family="ui-sans-serif,system-ui,sans-serif" font-size="16" font-weight="650" fill="#e8eefb" letter-spacing="-0.01em">Tributary</text>
+  <!-- testnet badge -->
+  <rect x="128" y="20" width="54" height="17" rx="8" fill="none" stroke="#1f2c45"/>
+  <text x="155" y="32" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" font-weight="600" fill="#8fa3c4" text-anchor="middle" letter-spacing="0.06em">TESTNET</text>
+
+  <!-- nav items -->
+  <text x="690" y="33" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" fill="#4cc3ff">GitHub</text>
+  <!-- connect wallet button -->
+  <rect x="740" y="16" width="120" height="28" rx="8" fill="#4cc3ff"/>
+  <text x="800" y="34" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" font-weight="600" fill="#06121f" text-anchor="middle">Connect Wallet</text>
+
+  <!-- intro section -->
+  <text x="20" y="108" font-family="ui-sans-serif,system-ui,sans-serif" font-size="28" font-weight="700" fill="#e8eefb" letter-spacing="-0.02em">Payment splitting on Stellar</text>
+  <text x="20" y="133" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" fill="#8fa3c4">Create a split, set shares, and pay a whole team in one transaction.</text>
+
+  <!-- action panel -->
+  <!-- tabs -->
+  <rect x="20" y="160" width="840" height="1" fill="#1f2c45" y="207"/>
+
+  <!-- tab: Create (active) -->
+  <text x="30" y="195" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600" fill="#e8eefb">Create</text>
+  <rect x="30" y="206" width="40" height="2" rx="1" fill="#4cc3ff"/>
+
+  <!-- tab: Pay -->
+  <text x="96" y="195" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600" fill="#8fa3c4">Pay</text>
+
+  <!-- tab: Escrow -->
+  <text x="136" y="195" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600" fill="#8fa3c4">Escrow</text>
+
+  <!-- tab bottom border -->
+  <rect x="20" y="207" width="840" height="1" fill="#1f2c45"/>
+
+  <!-- card -->
+  <rect x="20" y="220" width="460" height="230" rx="14" fill="#111a2c" stroke="#1f2c45"/>
+
+  <!-- card heading -->
+  <text x="40" y="246" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="650" fill="#e8eefb">New split</text>
+
+  <!-- recipient row 1 label -->
+  <text x="40" y="276" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4">Recipient 1</text>
+  <rect x="40" y="282" width="308" height="32" rx="8" fill="#0b1220" stroke="#1f2c45"/>
+  <text x="54" y="303" font-family="ui-monospace,Consolas,monospace" font-size="12" fill="#8fa3c4">GDQP2…KFXR</text>
+  <rect x="356" y="282" width="72" height="32" rx="8" fill="#0b1220" stroke="#1f2c45"/>
+  <text x="392" y="303" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#e8eefb" text-anchor="middle">50%</text>
+
+  <!-- recipient row 2 -->
+  <text x="40" y="330" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4">Recipient 2</text>
+  <rect x="40" y="336" width="308" height="32" rx="8" fill="#0b1220" stroke="#1f2c45"/>
+  <text x="54" y="357" font-family="ui-monospace,Consolas,monospace" font-size="12" fill="#8fa3c4">GBZX3…MNOP</text>
+  <rect x="356" y="336" width="72" height="32" rx="8" fill="#0b1220" stroke="#1f2c45"/>
+  <text x="392" y="357" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#e8eefb" text-anchor="middle">50%</text>
+
+  <!-- shares total indicator -->
+  <text x="40" y="392" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#4cc3ff">✓ 100 / 100 bps</text>
+
+  <!-- add recipient + create button row -->
+  <rect x="40" y="402" width="110" height="30" rx="15" fill="transparent" stroke="#1f2c45"/>
+  <text x="95" y="422" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#8fa3c4" text-anchor="middle">+ Add recipient</text>
+  <rect x="340" y="402" width="120" height="30" rx="8" fill="#4cc3ff"/>
+  <text x="400" y="422" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" font-weight="600" fill="#06121f" text-anchor="middle">Create split</text>
+
+  <!-- splits list heading -->
+  <text x="20" y="482" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" font-weight="650" fill="#e8eefb" letter-spacing="-0.01em">All splits</text>
+  <text x="76" y="482" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4">  ·  24 total</text>
+
+  <!-- split card 1 -->
+  <rect x="20" y="494" width="196" height="100" rx="14" fill="#111a2c" stroke="#1f2c45"/>
+  <text x="36" y="518" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="650" fill="#e8eefb">#0001</text>
+  <rect x="156" y="506" width="42" height="17" rx="8" fill="none" stroke="#4cc3ff"/>
+  <text x="177" y="518" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" fill="#4cc3ff" text-anchor="middle">yours</text>
+  <text x="36" y="540" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4">GDQP2…KFXR</text>
+  <text x="172" y="540" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4" text-anchor="end">50%</text>
+  <text x="36" y="557" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4">GBZX3…MNOP</text>
+  <text x="172" y="557" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4" text-anchor="end">50%</text>
+  <line x1="36" y1="568" x2="196" y2="568" stroke="#1f2c45"/>
+  <text x="36" y="583" font-family="ui-monospace,Consolas,monospace" font-size="10" fill="#8fa3c4">CCZXV…GJUU</text>
+
+  <!-- split card 2 -->
+  <rect x="228" y="494" width="196" height="100" rx="14" fill="#111a2c" stroke="#1f2c45"/>
+  <text x="244" y="518" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="650" fill="#e8eefb">#0002</text>
+  <text x="244" y="540" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4">GABC1…WXYZ</text>
+  <text x="380" y="540" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4" text-anchor="end">70%</text>
+  <text x="244" y="557" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4">GDEF2…UVWX</text>
+  <text x="380" y="557" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4" text-anchor="end">30%</text>
+  <line x1="244" y1="568" x2="404" y2="568" stroke="#1f2c45"/>
+  <text x="244" y="583" font-family="ui-monospace,Consolas,monospace" font-size="10" fill="#8fa3c4">CCZXV…GJUU</text>
+
+  <!-- split card 3 -->
+  <rect x="436" y="494" width="196" height="100" rx="14" fill="#111a2c" stroke="#1f2c45"/>
+  <text x="452" y="518" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="650" fill="#e8eefb">#0003</text>
+  <text x="452" y="540" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4">GHIJ3…STUV</text>
+  <text x="588" y="540" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4" text-anchor="end">40%</text>
+  <text x="452" y="557" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4">GKLM4…QRST</text>
+  <text x="588" y="557" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4" text-anchor="end">60%</text>
+  <line x1="452" y1="568" x2="612" y2="568" stroke="#1f2c45"/>
+  <text x="452" y="583" font-family="ui-monospace,Consolas,monospace" font-size="10" fill="#8fa3c4">CCZXV…GJUU</text>
+
+  <!-- split card 4 -->
+  <rect x="644" y="494" width="196" height="100" rx="14" fill="#111a2c" stroke="#1f2c45"/>
+  <text x="660" y="518" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="650" fill="#e8eefb">#0004</text>
+  <text x="660" y="540" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4">GNOP5…OPQR</text>
+  <text x="796" y="540" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4" text-anchor="end">25%</text>
+  <text x="660" y="557" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4">GQRS6…MNOP</text>
+  <text x="796" y="557" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#8fa3c4" text-anchor="end">75%</text>
+  <line x1="660" y1="568" x2="820" y2="568" stroke="#1f2c45"/>
+  <text x="660" y="583" font-family="ui-monospace,Consolas,monospace" font-size="10" fill="#8fa3c4">CCZXV…GJUU</text>
+
+  <!-- footer -->
+  <rect y="604" width="880" height="1" fill="#1f2c45"/>
+  <text x="20" y="616" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#8fa3c4">Apache-2.0</text>
+  <text x="440" y="616" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#4cc3ff" text-anchor="middle">Contract on Testnet</text>
+  <text x="860" y="616" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#4cc3ff" text-anchor="end">tributary-protocol/tributary</text>
+</svg>

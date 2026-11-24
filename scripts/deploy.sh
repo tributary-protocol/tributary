@@ -7,6 +7,20 @@ source="${1:-deployer}"
 
 cargo build --release --target wasm32v1-none -p tributary-splitter
 
+# Optimize the wasm binary before deploying
+if command -v wasm-opt &>/dev/null; then
+  echo "Original size:"
+  ls -lh target/wasm32v1-none/release/tributary_splitter.wasm
+  echo "Running wasm-opt -Oz..."
+  wasm-opt -Oz \
+    -o target/wasm32v1-none/release/tributary_splitter.wasm \
+    target/wasm32v1-none/release/tributary_splitter.wasm
+  echo "Optimized size:"
+  ls -lh target/wasm32v1-none/release/tributary_splitter.wasm
+else
+  echo "wasm-opt not found (install binaryen). Skipping optimization."
+fi
+
 stellar contract deploy \
   --wasm target/wasm32v1-none/release/tributary_splitter.wasm \
   --source "$source" \

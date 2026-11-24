@@ -1,17 +1,46 @@
 ---
 name: Bug report
-about: Something behaves wrong
+about: Report a bug to help us improve Tributary
 labels: bug
 ---
 
-**What happened**
+## Bug description
 
-**What you expected**
+A clear and concise description of what the bug is.
 
-**Steps to reproduce**
+## Expected behaviour
 
-1.
+What should have happened instead?
 
-**Where** (contract, sdk, app, docs)
+## Steps to reproduce
 
-**Environment** (browser, wallet, network, commit)
+1. 
+2. 
+3. 
+
+## Affected area
+
+Tick the parts this bug touches:
+
+- [ ] Contract (smart contract – Rust / Soroban)
+- [ ] SDK (TypeScript client – /sdk)
+- [ ] App (web dashboard – /app)
+- [ ] Indexer (off-chain event processor – /indexer)
+- [ ] Docs (/docs)
+- [ ] Scripts (/scripts)
+- [ ] CI/CD (workflows, repo config – /.github)
+
+## Environment
+
+- **Browser & version:** 
+- **Freighter wallet version:** 
+- **Network:** Testnet / Mainnet
+- **Commit or branch:** 
+- **Rust toolchain** (if compiling locally): `rustup show` output
+
+## Additional context
+
+Add logs, screenshots, error messages or anything else that could help.
+
+> If you plan to submit a fix, include a test that fails without it.
+> See [`CONTRIBUTING.md`](../CONTRIBUTING.md) for expectations around tests, `no_std` contract code, and CI gates.

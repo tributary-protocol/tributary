@@ -1,0 +1,69 @@
+name: kani
+
+# Machine-checked proofs of the conservation invariants (#352).
+#
+# The per-PR job runs the fast tier and only when the arithmetic under proof
+# actually changes. The full tier — including the mutation check that keeps the
+# proofs honest — runs nightly, because the whole-`i128` harnesses are minutes
+# each and would not earn their place on every push.
+#
+# Bounds and measured runtimes: docs/formal-verification.md
+
+on:
+  pull_request:
+    paths:
+      - "contracts/**"
+      - ".github/workflows/kani.yml"
+      - "scripts/kani-mutation-check.sh"
+  push:
+    branches: [main]
+    paths:
+      - "contracts/**"
+  schedule:
+    # 04:20 UTC daily.
+    - cron: "20 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: kani-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proofs:
+    runs-on: ubuntu-latest
+    # Budget: the fast tier lands in ~2 min, the full tier in ~12 min. The cap
+    # is deliberately close so a change that makes a proof intractable shows up
+    # as a failure instead of a silently creeping bill.
+    timeout-minutes: ${{ github.event_name == 'schedule' && 45 || 20 }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+      - name: Install Kani
+        run: |
+          cargo install --locked kani-verifier
+          cargo kani setup
+      - name: Record versions
+        run: cargo kani --version | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Share validation and the bounded-amount tier: every valid share vector,
+      # amounts below 2^16. Per-harness timeout so one intractable proof fails
+      # as itself rather than as a job-level timeout with no attribution.
+      - name: Fast tier — every valid share vector, bounded amounts
+        run: |
+          cargo kani -p tributary-splitter-proofs \
+            -Z unstable-options --harness-timeout 300s \
+            --harness proof_shares_ --harness proof_bounded_
+
+      # Every i128 amount at fixed share vectors, plus exact-floor rounding.
+      - name: Full tier — every i128 amount, fixed share vectors
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          cargo kani -p tributary-splitter-proofs \
+            -Z unstable-options --harness-timeout 600s \
+            --harness proof_full_ --harness proof_floor_
+
+      - name: Mutation check — the proofs must fail on broken arithmetic
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: scripts/kani-mutation-check.sh

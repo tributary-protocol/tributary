@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Embeddable Donation Button Example</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        padding: 2rem;
+        max-width: 600px;
+        margin: 0 auto;
+        color: #333;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+      }
+      p {
+        line-height: 1.5;
+        margin-bottom: 2rem;
+        color: #666;
+      }
+      .demo-container {
+        padding: 2rem;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Donate with Tributary</h1>
+    <p>
+      This page demonstrates an embeddable donation widget for Tributary. 
+      Click the button below to initiate a donation to a pre-configured split.
+    </p>
+
+    <div class="demo-container">
+      <!-- The widget will be mounted inside this container -->
+      <div id="tributary-donation-widget" data-split-id="1" data-network="testnet"></div>
+    </div>
+
+    <!-- Load the widget code -->
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

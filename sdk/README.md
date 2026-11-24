@@ -55,6 +55,47 @@ recipients: [
 ],
 ```
 
+## Configuration
+
+The `Client` constructor accepts a `ClientOptions` object. The most common
+fields are:
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `rpcUrl` | `string` | — | Soroban RPC endpoint (**required**) |
+| `networkPassphrase` | `string` | — | Network passphrase (**required**) |
+| `contractId` | `string` | — | Splitter contract address (**required**) |
+| `publicKey` | `string` | `undefined` | Caller's G… address; needed for write calls |
+| `allowHttp` | `boolean` | `false` | Allow non-HTTPS RPC URLs (local dev only) |
+
+The `networks` export provides the correct `networkPassphrase` and
+`contractId` for every supported network so you don't have to hard-code them:
+
+```ts
+import { Client, networks } from "tributary-sdk";
+
+// Testnet (default)
+const testnetClient = new Client({
+  ...networks.testnet,
+  rpcUrl: "https://soroban-testnet.stellar.org",
+  publicKey: "G…",           // your wallet address
+});
+
+// Mainnet – supply your own RPC and contract ID
+const mainnetClient = new Client({
+  networkPassphrase: "Public Global Stellar Network ; September 2015",
+  contractId: "C…",          // mainnet splitter contract
+  rpcUrl: "https://soroban-mainnet.stellar.org",
+  publicKey: "G…",
+});
+```
+
+> **Note:** `rpcUrl` is not bundled inside `networks` because the right
+> endpoint depends on whether you're using the public SDF node, a third-party
+> provider, or a self-hosted RPC.
+
+
+
 ## Regenerating
 
 After the contract changes and is redeployed:

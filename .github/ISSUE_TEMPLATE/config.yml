@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Tributary Security
+    url: https://github.com/tributary-protocol/tributary/blob/main/SECURITY.md
+    about: Report a security vulnerability via email – do not open a public issue.

@@ -1,0 +1,17 @@
+{
+  "name": "tributary-example-discord-bot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Example Discord bot that consumes indexer events and posts them to a channel via webhook",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && node dist/discord-bot.js",
+    "test": "npm run build && node --test dist/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  }
+}

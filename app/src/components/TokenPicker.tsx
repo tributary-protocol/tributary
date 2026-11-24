@@ -13,6 +13,7 @@ export default function TokenPicker({
   const known = TOKENS.some((t) => t.contract === token.contract);
   const [custom, setCustom] = useState(!known);
   const [address, setAddress] = useState(known ? "" : token.contract);
+  const [decimals, setDecimals] = useState(known ? 7 : token.decimals);
 
   function pick(value: string) {
     if (value === "custom") {
@@ -28,7 +29,18 @@ export default function TokenPicker({
     setAddress(value);
     const trimmed = value.trim();
     if (CONTRACT_RE.test(trimmed)) {
-      onChange({ code: shortAddress(trimmed), contract: trimmed });
+      onChange({ code: shortAddress(trimmed), contract: trimmed, decimals });
+    }
+  }
+
+  function setCustomDecimals(value: string) {
+    const num = parseInt(value, 10);
+    if (!isNaN(num) && num >= 0 && num <= 18) {
+      setDecimals(num);
+      const trimmed = address.trim();
+      if (CONTRACT_RE.test(trimmed)) {
+        onChange({ code: shortAddress(trimmed), contract: trimmed, decimals: num });
+      }
     }
   }
 
@@ -47,11 +59,31 @@ export default function TokenPicker({
         <option value="custom">Other…</option>
       </select>
       {custom && (
-        <input
-          placeholder="C… token contract"
-          value={address}
-          onChange={(e) => setCustomAddress(e.target.value)}
-        />
+        <>
+          <label htmlFor="token-contract" className="visually-hidden">
+            Token contract address
+          </label>
+          <input
+            id="token-contract"
+            placeholder="C… token contract"
+            value={address}
+            onChange={(e) => setCustomAddress(e.target.value)}
+            aria-label="Token contract address"
+          />
+          <label htmlFor="token-decimals" className="visually-hidden">
+            Token decimals
+          </label>
+          <input
+            id="token-decimals"
+            type="number"
+            min="0"
+            max="18"
+            placeholder="Decimals"
+            value={decimals}
+            onChange={(e) => setCustomDecimals(e.target.value)}
+            aria-label="Token decimals (0-18)"
+          />
+        </>
       )}
     </>
   );
