@@ -1297,6 +1297,77 @@ fn large_payment_does_not_overflow_share_math() {
     assert_eq!(a_bal + b_bal + c_bal, amount);
     assert_eq!(token_client.balance(&payer), 0);
 }
+/// Measures CPU-instruction cost of pay and distribute at the worst-case
+/// split size (MAX_RECIPIENTS = 32). The values are printed to stdout;
+/// run with `cargo test -- --nocapture` to inspect them. The test also
+/// verifies that full-amount conservation holds at this boundary.
+#[test]
+fn worst_case_32_recipients_cost() {
+    let s = setup();
+    // This worst-case test intentionally exceeds the default Mainnet resource
+    // limits (600M CPU insns). We remove the budget ceiling so the test can
+    // measure the actual cost rather than being cut off by the limit.
+    s.env.cost_estimate().budget().reset_unlimited();
+    let creator = Address::generate(&s.env);
+    let payer = Address::generate(&s.env);
+    let (token_id, token_client) = fund_token(&s.env, &payer, 1_000_000);
+
+    // 32 recipients with shares summing to 10_000.
+    // 16 at 313 + 16 at 312 = 5008 + 4992 = 10000.
+    let mut recipients = vec![&s.env];
+    let mut shares = vec![&s.env];
+    let mut addrs = soroban_sdk::Vec::new(&s.env);
+    for _ in 0..16 {
+        let addr = Address::generate(&s.env);
+        recipients.push_back(acct(&addr));
+        shares.push_back(313u32);
+        addrs.push_back(addr);
+    }
+    for _ in 0..16 {
+        let addr = Address::generate(&s.env);
+        recipients.push_back(acct(&addr));
+        shares.push_back(312u32);
+        addrs.push_back(addr);
+    }
+    assert_eq!(recipients.len(), MAX_RECIPIENTS);
+
+    let id = s.client.create_split(&creator, &recipients, &shares, &None);
+
+    // --- Measure pay cost ---
+    let pay_amount: i128 = 100_000;
+    let cpu_before = s.env.cost_estimate().budget().cpu_instruction_cost();
+    s.client.pay(&payer, &id, &token_id, &pay_amount);
+    let cpu_after = s.env.cost_estimate().budget().cpu_instruction_cost();
+    let pay_cpu = cpu_after - cpu_before;
+
+    // Conservation: payer balance correct
+    assert_eq!(token_client.balance(&payer), 900_000);
+    // Conservation: sum of recipient balances equals amount paid
+    let mut received: i128 = 0;
+    for i in 0..addrs.len() {
+        received += token_client.balance(&addrs.get_unchecked(i));
+    }
+    assert_eq!(received, pay_amount);
+
+    // --- Measure distribute cost ---
+    let escrow_amount: i128 = 200_000;
+    s.client.deposit(&payer, &id, &token_id, &escrow_amount);
+
+    let cpu_before = s.env.cost_estimate().budget().cpu_instruction_cost();
+    let distributed = s.client.distribute(&id, &token_id);
+    let cpu_after = s.env.cost_estimate().budget().cpu_instruction_cost();
+    let distribute_cpu = cpu_after - cpu_before;
+
+    assert_eq!(distributed, escrow_amount);
+    assert_eq!(s.client.balance(&id, &token_id), 0);
+
+    // Printed for inspection with `cargo test -- --nocapture`.
+    // These values feed the mainnet fee guidance in docs/mainnet.md.
+    std::println!("=== 32-recipient worst-case cost (CPU instructions) ===");
+    std::println!("pay:        {}", pay_cpu);
+    std::println!("distribute: {}", distribute_cpu);
+}
+
 #[test]
 fn held_tokens_tracking() {
     let s = setup();
